@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 
@@ -48,7 +49,9 @@ public enum TokenType
 /// </summary>
 public ref struct Tokenizer
 {
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private readonly ReadOnlySpan<char> _buffer;
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private readonly ReadOnlySequence<char> _sequence;
 
     /// <summary>
