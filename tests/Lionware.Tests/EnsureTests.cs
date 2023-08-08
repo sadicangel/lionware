@@ -58,4 +58,13 @@ public sealed class EnsureTests
     [InlineData(false, 0, 1)]
     public void Ensure_LessThanOrEqualTo_AssertsCorrectly(bool throws, int argument, int comparand) =>
         AssertResult<ArgumentOutOfRangeException>(throws, () => Ensure.LessThanOrEqualTo(argument, comparand));
+
+    [Theory]
+    [InlineData(false, -1, -1, 1)]
+    [InlineData(false, 0, -1, 1)]
+    [InlineData(false, 1, -1, 1)]
+    [InlineData(true, -2, -1, 1)]
+    [InlineData(true, 2, -1, 1)]
+    public void Ensure_InRange_AssertsCorrectly(bool throws, int argument, int lowerBound, int upperBound) =>
+        AssertResult<ArgumentOutOfRangeException>(throws, () => Ensure.InRange(argument, lowerBound, upperBound));
 }

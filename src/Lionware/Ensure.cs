@@ -103,4 +103,25 @@ public static class Ensure
         if (argument.CompareTo(comparand) > 0)
             throw new ArgumentOutOfRangeException(argumentExpression, $"{argumentExpression} ({argument}) must be less than or equal to {comparand}.");
     }
+
+    /// <summary>
+    /// Throws an <see cref="ArgumentNullException"/> if <paramref name="argument"/> is less
+    /// than <paramref name="lowerBound"/> or greater than or equal to <paramref name="upperBound"/>.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="argument">The argument to validate as greater than or equal
+    /// to <paramref name="lowerBound"/> and less than <paramref name="upperBound"/>.</param>
+    /// <param name="lowerBound">The value to which <paramref name="argument"/> must be greater than or equal to.</param>
+    /// <param name="upperBound">The value to which <paramref name="argument"/> must be less than.</param>
+    /// <param name="argumentExpression">The parameter with which <paramref name="argument"/> corresponds.</param>
+    /// <exception cref="ArgumentOutOfRangeException"/>
+    /// <remarks><paramref name="upperBound"/> is exclusive.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T InRange<T>(T argument, T lowerBound, T upperBound, [CallerArgumentExpression((nameof(argument)))] string? argumentExpression = null)
+        where T : IComparable<T>
+    {
+        GreaterThanOrEqualTo(argument, lowerBound, argumentExpression);
+        LessThan(argument, upperBound, argumentExpression);
+        return argument;
+    }
 }
