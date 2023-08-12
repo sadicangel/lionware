@@ -281,7 +281,8 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
             case DbfFieldType.Date:
                 Span<char> date = stackalloc char[8];
                 encoding.GetChars(source[..8], date);
-                return new(DateTime.ParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture));
+                date = date.Trim("\0 ");
+                return date.Length > 0 ? new DbfField(DateTime.ParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture)) : DbfField.Null;
 
             case DbfFieldType.Timestamp:
                 return new(DateTime.FromOADate(MemoryMarshal.Read<int>(source[..4]) - JulianCalendarOffset) + TimeSpan.FromMilliseconds(MemoryMarshal.Read<int>(source.Slice(4, 4))));

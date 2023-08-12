@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Runtime.CompilerServices;
 
 namespace Lionware.dBase;
 
@@ -10,15 +9,16 @@ namespace Lionware.dBase;
 /// The record if defined by a <see cref="DbfRecordDescriptor" />.
 /// </remarks>
 [DebuggerDisplay("{" + nameof(GetDebuggerDisplay) + "(),nq}")]
-public sealed record class DbfRecord
+public readonly record struct DbfRecord : IEquatable<DbfRecord>
 {
     // Encodes the byte that describes the status of a record.
     internal enum Status : byte { Valid = 0x20, Deleted = 0x2A }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private readonly DbfField[] _fields;
+
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private Status _status;
+    private readonly Status _status;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DbfRecord" /> class.
@@ -43,7 +43,7 @@ public sealed record class DbfRecord
     /// <summary>
     /// Gets the number of <see cref="DbfField" /> elements.
     /// </summary>
-    internal Status RecordStatus { get => _status; set => _status = value; }
+    internal Status RecordStatus { get => _status; init => _status = value; }
 
     /// <summary>
     /// Gets the number of <see cref="DbfField" /> elements.
@@ -65,10 +65,8 @@ public sealed record class DbfRecord
     /// <returns>
     ///   <see langword="true" /> if the current object is equal to the <paramref name="other" /> parameter; otherwise, <see langword="false" />.
     /// </returns>
-    public bool Equals(DbfRecord? other)
+    public bool Equals(DbfRecord other)
     {
-        if (other is null)
-            return false;
         return _status == other._status
             && _fields.SequenceEqual(other._fields);
     }
@@ -107,7 +105,6 @@ public sealed record class DbfRecord
         /// Initialize the enumerator.
         /// </summary>
         /// <param name="span">The span to enumerate.</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal Enumerator(DbfField[] span)
         {
             _span = span;
@@ -118,7 +115,6 @@ public sealed record class DbfRecord
         /// Advances the enumerator to the next element of the span.
         /// </summary>
         /// <returns></returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool MoveNext()
         {
             int index = _index + 1;
@@ -127,7 +123,6 @@ public sealed record class DbfRecord
                 _index = index;
                 return true;
             }
-
             return false;
         }
 
@@ -136,7 +131,6 @@ public sealed record class DbfRecord
         /// </summary>
         public readonly ref readonly DbfField Current
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => ref _span[_index];
         }
     }
