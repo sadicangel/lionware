@@ -345,25 +345,9 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// <returns></returns>
     public Dbf Clone(Stream stream)
     {
-        // Copy relevant header values.
-        var dbf = new Dbf(stream)
-        {
-            Version = Version,
-            HasDosMemo = HasDosMemo,
-            HasSqlTable = HasSqlTable,
-            HasDbtMemo = HasDbtMemo,
-            IsEncrypted = IsEncrypted,
-            HasMdxFile = HasMdxFile,
-            Language = Language,
-        };
-
-        // Clone the records.
-        dbf.AddRange(this.Select(record => record with { }));
-
-        // Make sure we start at 0.
-        dbf._stream.Position = 0;
-
-        return dbf;
+        _stream.CopyTo(stream);
+        stream.Position = 0;
+        return new Dbf(stream);
     }
 
     private void Dispose(bool disposing)
