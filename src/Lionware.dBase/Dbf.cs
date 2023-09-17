@@ -12,8 +12,10 @@ namespace Lionware.dBase;
 /// </summary>
 /// <seealso cref="IDisposable" />
 /// <seealso cref="ICollection{T}" />
-public sealed class Dbf : IDisposable, IList<DbfRecord>
+public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
 {
+    private const int EofByte = 0x1A;
+
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private readonly Stream _stream;
 
@@ -24,12 +26,110 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     private readonly byte _version = 3;
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private readonly DbfRecordDescriptor _recordDescriptor;
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private Encoding? _encoding;
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private char? _decimalSeparator;
 
-    bool ICollection<DbfRecord>.IsReadOnly => false;
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Dbf"/> class from an existing file.
+    /// </summary>
+    /// <param name="fileName">Name of the file to create.</param>
+    public Dbf(string fileName)
+        : this(new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite)) { }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Dbf"/> class from existing data on a stream.
+    /// </summary>
+    /// <param name="stream">The stream to write to.</param>
+    public Dbf(Stream stream)
+    {
+        Ensure.NotNull(stream);
+
+        _stream = stream;
+
+        // Read the metadata.
+        using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
+        _version = reader.ReadByte();
+        LastUpdate = new DateOnly(year: 1900 + reader.ReadByte(), month: reader.ReadByte(), day: reader.ReadByte());
+        RecordCount = reader.ReadInt32();
+        var headerLength = reader.ReadInt16();
+        var recordLength = reader.ReadInt16();
+        reader.BaseStream.Position += 2; // Reserved.
+        InTransaction = reader.ReadByte() == 1;
+        IsEncrypted = reader.ReadByte() == 1;
+        reader.BaseStream.Position += 12; // Reserved.
+        HasMdxFile = reader.ReadByte() == 1;
+        Language = (DbfLanguage)reader.ReadByte();
+        reader.BaseStream.Position += 2; // Reserved.
+
+        var descriptors = new DbfFieldDescriptor[headerLength / 32 - 1];
+        reader.Read(MemoryMarshal.AsBytes(descriptors.AsSpan()));
+        _recordDescriptor = new DbfRecordDescriptor(descriptors);
+
+        if (reader.ReadByte() != 0x0D)
+            throw new FormatException("Not a dBase file");
+
+        if (HeaderLength != headerLength)
+            throw new InvalidOperationException("Invalid header length");
+
+        if (RecordLength != recordLength)
+            throw new InvalidOperationException("Invalid record length");
+
+        _stream.Position = 0;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Dbf"/> class by creating a new file.
+    /// </summary>
+    /// <param name="fileName">Name of the file to create.</param>
+    /// <param name="recordDescriptor">The record descriptor.</param>
+    public Dbf(string fileName, DbfRecordDescriptor recordDescriptor)
+        : this(new FileStream(fileName, FileMode.CreateNew, FileAccess.ReadWrite), recordDescriptor) { }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Dbf"/> class on a new stream.
+    /// </summary>
+    /// <param name="stream">The stream to write to.</param>
+    /// <param name="recordDescriptor">The record descriptor.</param>
+    public Dbf(Stream stream, DbfRecordDescriptor recordDescriptor)
+    {
+        Ensure.NotNull(stream);
+        Ensure.NotNull(recordDescriptor);
+
+        _stream = stream;
+        _recordDescriptor = recordDescriptor;
+
+        // Write the metadata.
+        using var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true);
+        writer.Write(_version);
+        writer.Write((byte)(LastUpdate.Year - 1900));
+        writer.Write((byte)LastUpdate.Month);
+        writer.Write((byte)LastUpdate.Day);
+        writer.Write(RecordCount);
+        writer.Write(HeaderLength);
+        writer.Write(RecordLength);
+        writer.Write((short)0);
+        writer.Write(Convert.ToByte(InTransaction));
+        writer.Write(Convert.ToByte(IsEncrypted));
+        writer.Write(0);
+        writer.Write(0);
+        writer.Write(0);
+        writer.Write(Convert.ToByte(HasMdxFile));
+        writer.Write((byte)Language);
+        writer.Write((short)0);
+        writer.Write(MemoryMarshal.AsBytes(_recordDescriptor.AsSpan()));
+        writer.Write(0x0D);
+        // Write the EOF byte (0x1A).
+        // This byte is overwritten when Add/AddRange/Clear is called. So these methods must append the byte again.
+        // For insert/remove, since the data is shifted right/left, the byte is kept.
+        writer.Write((byte)EofByte);
+
+        _stream.Position = 0;
+    }
 
     /// <summary>
     /// Gets the length of the inner stream.
@@ -64,23 +164,22 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// <summary>
     /// Gets the date of the last update.
     /// </summary>
-    public DateTime LastUpdate { get; private set; } = new(1900, 1, 1);
+    public DateOnly LastUpdate { get; private set; } = new(1900, 1, 1);
 
     /// <summary>
     /// Gets the number of records in the dBase file.
     /// </summary>
     public int RecordCount { get; private set; }
-    int ICollection<DbfRecord>.Count => RecordCount;
 
     /// <summary>
     /// Gets the length of the header, in bytes.
     /// </summary>
-    public short HeaderLength { get => (short)(32 + 32 * RecordDescriptor.Count + 1); }
+    public short HeaderLength { get => (short)(32 + 32 * _recordDescriptor.Count + 1); }
 
     /// <summary>
     /// Gets the length of each record, in bytes.
     /// </summary>
-    public short RecordLength { get => RecordDescriptor.RecordSize; }
+    public short RecordLength { get => _recordDescriptor.RecordSize; }
 
     /// <summary>
     /// Gets a value indicating whether the data is encrypted.
@@ -101,7 +200,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     public bool InTransaction { get; private set; }
 
     /// <summary>
-    /// Gets the language drive.
+    /// Gets the language driver identifier.
     /// </summary>
     /// <remarks>
     /// These values follow the DOS / Windows Code Page values.
@@ -121,7 +220,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// <summary>
     /// Gets the record descriptor.
     /// </summary>
-    public DbfRecordDescriptor RecordDescriptor { get; }
+    public ref readonly DbfRecordDescriptor RecordDescriptor { get => ref _recordDescriptor; }
 
     /// <summary>
     /// Gets the <see cref="DbfRecord" /> at the specified index.
@@ -142,7 +241,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
                     : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
                 _stream.Position = offset;
                 _stream.Read(buffer);
-                return RecordDescriptor.Read(buffer, Encoding, DecimalSeparator);
+                return _recordDescriptor.Read(buffer, Encoding, DecimalSeparator);
             }
             finally
             {
@@ -162,7 +261,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
                 Span<byte> buffer = RecordLength < 256
                     ? stackalloc byte[RecordLength]
                     : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
-                RecordDescriptor.Write(value, buffer, Encoding, DecimalSeparator);
+                _recordDescriptor.Write(value, buffer, Encoding, DecimalSeparator);
                 _stream.Position = offset;
                 _stream.Write(buffer);
                 UpdateLastUpdated();
@@ -176,6 +275,14 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     }
 
     /// <summary>
+    /// Gets the <see cref="DbfField" /> with the specified <paramref name="fieldName" />
+    /// in the <see cref="DbfRecord" /> at the specified <paramref name="recordIndex" />.
+    /// </summary>
+    /// <param name="recordIndex">Index of the record.</param>
+    /// <param name="fieldName">Name of the field.</param>
+    public DbfField this[int recordIndex, string fieldName] { get => this[recordIndex, _recordDescriptor.IndexOf(fieldName)]; }
+
+    /// <summary>
     /// Gets the <see cref="DbfField" /> at the specified <paramref name="fieldIndex" />
     /// in the <see cref="DbfRecord" /> at the specified <paramref name="recordIndex" />.
     /// </summary>
@@ -186,147 +293,17 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
         get
         {
             Ensure.InRange(recordIndex, 0, RecordCount);
-            Ensure.InRange(fieldIndex, 0, RecordDescriptor.Count);
+            Ensure.InRange(fieldIndex, 0, _recordDescriptor.Count);
 
             long offset = HeaderLength + RecordLength * recordIndex;
             // Skip to field.
             for (int i = 0; i < fieldIndex; ++i)
-                offset += RecordDescriptor[i].Length;
+                offset += _recordDescriptor[i].Length;
             _stream.Position = offset;
-            ref readonly var descriptor = ref RecordDescriptor[fieldIndex];
+            ref readonly var descriptor = ref _recordDescriptor[fieldIndex];
             Span<byte> buffer = stackalloc byte[descriptor.Length]; // At most, 255 bytes.
             _stream.Read(buffer);
             return descriptor.Read(buffer, Encoding, DecimalSeparator);
-        }
-    }
-
-    /// <summary>
-    /// Gets the <see cref="DbfField" /> with the specified <paramref name="fieldName" />
-    /// in the <see cref="DbfRecord" /> at the specified <paramref name="recordIndex" />.
-    /// </summary>
-    /// <param name="recordIndex">Index of the record.</param>
-    /// <param name="fieldName">Name of the field.</param>
-    public DbfField this[int recordIndex, string fieldName]
-    {
-        get
-        {
-            var fieldIndex = RecordDescriptor.IndexOf(fieldName);
-            if (fieldIndex >= 0)
-                return this[recordIndex, fieldIndex];
-            throw new ArgumentOutOfRangeException(nameof(fieldName));
-        }
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Dbf"/> class from an existing file.
-    /// </summary>
-    /// <param name="fileName">Name of the file to create.</param>
-    public Dbf(string fileName)
-        : this(new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite)) { }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Dbf"/> class from existing data on a stream.
-    /// </summary>
-    /// <param name="stream">The stream to write to.</param>
-    public Dbf(Stream stream)
-    {
-        Ensure.NotNull(stream);
-
-        _stream = stream;
-
-        // Read the metadata.
-        using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
-        _version = reader.ReadByte();
-        LastUpdate = new DateTime(year: 1900 + reader.ReadByte(), month: reader.ReadByte(), day: reader.ReadByte());
-        RecordCount = reader.ReadInt32();
-        var headerLength = reader.ReadInt16();
-        var recordLength = reader.ReadInt16();
-        reader.BaseStream.Position += 2; // Reserved.
-        InTransaction = reader.ReadByte() == 1;
-        IsEncrypted = reader.ReadByte() == 1;
-        reader.BaseStream.Position += 12; // Reserved.
-        HasMdxFile = reader.ReadByte() == 1;
-        Language = (DbfLanguage)reader.ReadByte();
-        reader.BaseStream.Position += 2; // Reserved.
-
-        var descriptors = new DbfFieldDescriptor[headerLength / 32 - 1];
-        reader.Read(MemoryMarshal.AsBytes(descriptors.AsSpan()));
-        RecordDescriptor = new DbfRecordDescriptor(descriptors);
-
-        if (reader.ReadByte() != 0x0D)
-            throw new FormatException("Not a dBase file");
-
-        if (HeaderLength != headerLength)
-            throw new InvalidOperationException("Invalid header length");
-
-        if (RecordLength != recordLength)
-            throw new InvalidOperationException("Invalid record length");
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Dbf"/> class by creating a new file.
-    /// </summary>
-    /// <param name="fileName">Name of the file to create.</param>
-    /// <param name="recordDescriptor">The record descriptor.</param>
-    public Dbf(string fileName, DbfRecordDescriptor recordDescriptor)
-        : this(new FileStream(fileName, FileMode.CreateNew, FileAccess.ReadWrite), recordDescriptor) { }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Dbf"/> class on a new stream.
-    /// </summary>
-    /// <param name="stream">The stream to write to.</param>
-    /// <param name="recordDescriptor">The record descriptor.</param>
-    public Dbf(Stream stream, DbfRecordDescriptor recordDescriptor)
-    {
-        Ensure.NotNull(stream);
-        Ensure.NotNull(recordDescriptor);
-
-        _stream = stream;
-        RecordDescriptor = recordDescriptor;
-
-        // Write the metadata.
-        using var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true);
-        writer.Write(_version);
-        writer.Write((byte)(LastUpdate.Year - 1900));
-        writer.Write((byte)LastUpdate.Month);
-        writer.Write((byte)LastUpdate.Day);
-        writer.Write(RecordCount);
-        writer.Write(HeaderLength);
-        writer.Write(RecordLength);
-        writer.Write((short)0);
-        writer.Write(Convert.ToByte(InTransaction));
-        writer.Write(Convert.ToByte(IsEncrypted));
-        writer.Write(0);
-        writer.Write(0);
-        writer.Write(0);
-        writer.Write(Convert.ToByte(HasMdxFile));
-        writer.Write((byte)Language);
-        writer.Write((short)0);
-        writer.Write(MemoryMarshal.AsBytes(RecordDescriptor.AsSpan()));
-        writer.Write(0x0D);
-        // Write the EOF byte (0x1A).
-        // This byte is overwritten when Add/AddRange/Clear is called. So these methods must append the byte again.
-        // For insert/remove, since the data is shifted right/left, the byte is kept.
-        writer.Write((byte)0x1A);
-
-        _stream.Position = 0;
-    }
-
-    // Updates timestamp of last modified.
-    private void UpdateLastUpdated()
-    {
-        var now = DateTime.UtcNow.Date;
-        if (LastUpdate != now)
-        {
-            LastUpdate = now;
-            Span<byte> buffer = stackalloc byte[3]
-            {
-                (byte)(LastUpdate.Year - 1900),
-                (byte)LastUpdate.Month,
-                (byte)LastUpdate.Day
-            };
-            _stream.Position = 1;
-            _stream.Write(buffer);
         }
     }
 
@@ -346,7 +323,6 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     public Dbf Clone(Stream stream)
     {
         _stream.CopyTo(stream);
-        stream.Position = 0;
         return new Dbf(stream);
     }
 
@@ -369,12 +345,29 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
         GC.SuppressFinalize(this);
     }
 
+    private void UpdateLastUpdated()
+    {
+        var now = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        if (LastUpdate != now)
+        {
+            LastUpdate = now;
+            Span<byte> buffer = stackalloc byte[3]
+            {
+                (byte)(LastUpdate.Year - 1900),
+                (byte)LastUpdate.Month,
+                (byte)LastUpdate.Day
+            };
+            _stream.Position = 1;
+            _stream.Write(buffer);
+        }
+    }
+
     /// <summary>
     /// Adds the specified record to the file.
     /// </summary>
     /// <param name="record">The record to add.</param>
     /// <exception cref="ArgumentNullException">record</exception>
-    public void Add(DbfRecord record)
+    public void Add(in DbfRecord record)
     {
         Ensure.NotNull(record);
 
@@ -385,9 +378,9 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
                 ? stackalloc byte[RecordLength]
                 : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
             _stream.Position = HeaderLength + RecordLength * RecordCount;
-            RecordDescriptor.Write(record, buffer, Encoding, DecimalSeparator);
+            _recordDescriptor.Write(record, buffer, Encoding, DecimalSeparator);
             _stream.Write(buffer);
-            _stream.WriteByte(0x1A); // EOF.
+            _stream.WriteByte(EofByte); // EOF.
             UpdateLastUpdated();
             ++RecordCount;
         }
@@ -415,14 +408,11 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
             _stream.Position = HeaderLength + RecordLength * RecordCount;
             foreach (var record in records)
             {
-                if (record is null)
-                    throw new InvalidOperationException($"{nameof(record)} is null");
-
-                RecordDescriptor.Write(record, buffer, Encoding, DecimalSeparator);
+                _recordDescriptor.Write(record, buffer, Encoding, DecimalSeparator);
                 _stream.Write(buffer);
                 ++count;
             }
-            _stream.WriteByte(0x1A); // EOF.
+            _stream.WriteByte(EofByte); // EOF.
             UpdateLastUpdated();
             RecordCount += count;
         }
@@ -440,7 +430,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     {
         _stream.SetLength(HeaderLength);
         _stream.Position = HeaderLength;
-        _stream.WriteByte(0x1A); // EOF.
+        _stream.WriteByte(EofByte); // EOF.
         RecordCount = 0;
         UpdateLastUpdated();
     }
@@ -454,20 +444,14 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     public IEnumerator<DbfRecord> GetEnumerator()
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(RecordLength);
-        try
+        for (int i = 0; i < RecordCount; ++i)
         {
-            for (int i = 0; i < RecordCount; ++i)
-            {
-                long offset = HeaderLength + RecordLength * i;
-                _stream.Position = offset;
-                _stream.Read(buffer.AsSpan(0, RecordLength));
-                yield return RecordDescriptor.Read(buffer.AsSpan(0, RecordLength), Encoding, DecimalSeparator);
-            }
+            long offset = HeaderLength + RecordLength * i;
+            _stream.Position = offset;
+            _stream.Read(buffer.AsSpan(0, RecordLength));
+            yield return _recordDescriptor.Read(buffer.AsSpan(0, RecordLength), Encoding, DecimalSeparator);
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
@@ -479,10 +463,8 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// <returns>
     /// The index of <paramref name="record" /> if found; otherwise, -1.
     /// </returns>
-    public int IndexOf(DbfRecord record)
+    public int IndexOf(in DbfRecord record)
     {
-        if (record is null)
-            return -1;
         int index = 0;
         foreach (var elem in this)
         {
@@ -498,7 +480,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// </summary>
     /// <param name="index">The zero-based index at which <paramref name="record" /> should be inserted.</param>
     /// <param name="record">The record to insert.</param>
-    public void Insert(int index, DbfRecord record)
+    public void Insert(int index, in DbfRecord record)
     {
         Ensure.InRange(index, 0, RecordCount);
         Ensure.NotNull(record);
@@ -510,7 +492,6 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
                 ? stackalloc byte[RecordLength]
                 : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
             var offset = HeaderLength + RecordLength * index;
-            RecordDescriptor.Write(record, buffer, Encoding, DecimalSeparator);
             _stream.InsertRange(offset, buffer);
             UpdateLastUpdated();
             ++RecordCount;
@@ -529,14 +510,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// <returns>
     ///   <see langword="true" /> if <paramref name="record" /> is found; otherwise, <see langword="false" />.
     /// </returns>
-    public bool Contains(DbfRecord record) => IndexOf(record) >= 0;
-
-    /// <inheritdoc />
-    void ICollection<DbfRecord>.CopyTo(DbfRecord[] array, int arrayIndex)
-    {
-        foreach (var record in this)
-            array[arrayIndex++] = record;
-    }
+    public bool Contains(in DbfRecord record) => IndexOf(record) >= 0;
 
     /// <summary>
     /// Deletes the first occurrence of a specific record.
@@ -549,13 +523,13 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// <remarks>
     /// Note that this sets record state to deleted but does not actually remove it.
     /// </remarks>
-    public bool Delete(DbfRecord record)
+    public bool Delete(ref DbfRecord record)
     {
         var index = IndexOf(record);
         if (index >= 0)
         {
             DeleteAt(index);
-            record.RecordStatus = DbfRecord.Status.Deleted;
+            record = record with { RecordStatus = DbfRecord.Status.Deleted };
         }
         return index >= 0;
     }
@@ -588,13 +562,13 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// <see langword="true" /> if <paramref name="record" /> was successfully restored in the file; otherwise, <see langword="false" />.
     /// This method also returns <see langword="false" /> if <paramref name="record" /> is not found.
     /// </returns>
-    public bool Restore(DbfRecord record)
+    public bool Restore(ref DbfRecord record)
     {
         var index = IndexOf(record);
         if (index >= 0)
         {
             RestoreAt(index);
-            record.RecordStatus = DbfRecord.Status.Valid;
+            record = record with { RecordStatus = DbfRecord.Status.Valid };
         }
         return index >= 0;
     }
@@ -632,7 +606,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     ///   <see langword="true" /> if <paramref name="record" /> was successfully removed from the file; otherwise, <see langword="false" />.
     ///   This method also returns <see langword="false" /> if <paramref name="record" /> is not found.
     /// </returns>
-    public bool Remove(DbfRecord record)
+    public bool Remove(in DbfRecord record)
     {
         var index = IndexOf(record);
         if (index >= 0)
