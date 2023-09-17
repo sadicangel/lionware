@@ -62,7 +62,7 @@ public sealed class EnsureTests
     [Theory]
     [InlineData(false, -1, -1, 1)]
     [InlineData(false, 0, -1, 1)]
-    [InlineData(false, 1, -1, 1)]
+    [InlineData(true, 1, -1, 1)]
     [InlineData(true, -2, -1, 1)]
     [InlineData(true, 2, -1, 1)]
     public void Ensure_InRange_AssertsCorrectly(bool throws, int argument, int lowerBound, int upperBound) =>
