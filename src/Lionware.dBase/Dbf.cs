@@ -121,7 +121,7 @@ public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
         writer.Write(Convert.ToByte(HasMdxFile));
         writer.Write((byte)Language);
         writer.Write((short)0);
-        writer.Write(MemoryMarshal.AsBytes(_recordDescriptor.AsSpan()));
+        writer.Write(MemoryMarshal.AsBytes(_recordDescriptor.FieldDescriptors));
         writer.Write(0x0D);
         // Write the EOF byte (0x1A).
         // This byte is overwritten when Add/AddRange/Clear is called. So these methods must append the byte again.

@@ -32,6 +32,11 @@ public readonly struct DbfRecordDescriptor : IEquatable<DbfRecordDescriptor>
     }
 
     /// <summary>
+    /// Gets the DBF field descriptors that make up this instance.
+    /// </summary>
+    public ReadOnlySpan<DbfFieldDescriptor> FieldDescriptors { get => _fieldDescriptors; }
+
+    /// <summary>
     /// Gets the number of <see cref="DbfFieldDescriptor" /> elements.
     /// </summary>
     public int Count => _fieldDescriptors.Length;
@@ -60,18 +65,6 @@ public readonly struct DbfRecordDescriptor : IEquatable<DbfRecordDescriptor>
     /// Gets the <see cref="DbfFieldDescriptor"/> with the specified name.
     /// </summary>
     public ref readonly DbfFieldDescriptor this[string name] => ref _fieldDescriptors[IndexOf(name)];
-
-    /// <summary>
-    /// Creates a new span over the inner array.
-    /// </summary>
-    /// <returns></returns>
-    public ReadOnlySpan<DbfFieldDescriptor> AsSpan() => this;
-
-    /// <summary>
-    /// Creates a new memory region over the inner array.
-    /// </summary>
-    /// <returns></returns>
-    public ReadOnlyMemory<DbfFieldDescriptor> AsMemory() => this;
 
     /// <summary>
     /// Returns the index of the first field with the specified <paramref name="name"/>.
@@ -226,10 +219,4 @@ public readonly struct DbfRecordDescriptor : IEquatable<DbfRecordDescriptor>
 
     /// <inheritdoc/>
     public static bool operator !=(DbfRecordDescriptor left, DbfRecordDescriptor right) => !(left == right);
-
-    /// <inheritdoc/>
-    public static implicit operator ReadOnlySpan<DbfFieldDescriptor>(DbfRecordDescriptor descriptor) => descriptor._fieldDescriptors;
-
-    /// <inheritdoc/>
-    public static implicit operator ReadOnlyMemory<DbfFieldDescriptor>(DbfRecordDescriptor descriptor) => descriptor._fieldDescriptors;
 }
