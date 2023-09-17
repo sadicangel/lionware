@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Lionware.dBase;
 public sealed class DbfFieldDescriptorTests
@@ -12,20 +13,39 @@ public sealed class DbfFieldDescriptorTests
         [DbfFieldDescriptor.Int64("i64_field")] = Int64.MaxValue,
         [DbfFieldDescriptor.Single("f32_field")] = (double)Single.MaxValue / 2,
         [DbfFieldDescriptor.Double("f64_field")] = Double.MaxValue / 2,
-        [DbfFieldDescriptor.Date("date_field")] = new DateTime(1987, 3, 29),
+        [DbfFieldDescriptor.Date("date_field")] = new DateOnly(1987, 3, 29),
+        [DbfFieldDescriptor.Timestamp("timestamp_field")] = new DateTime(1987, 3, 29, 0, 0, 0),
         [DbfFieldDescriptor.Text("field_name", 50)] = "some long string with less than 50 chars",
     };
 
-    public static IEnumerable<object[]> GetValuesWithSourceData() => Values.Select(v => new object[]
+    public static IEnumerable<object[]> GetValuesWithSourceData()
     {
-        v.Key,
-        v.Value switch {
-            bool b => new byte[] { (byte)(b ? 'T' : 'F') },
-            DateTime d => Encoding.ASCII.GetBytes(d.ToString("yyyyMMdd")),
-            _ => Encoding.ASCII.GetBytes(v.Value.ToString()!)
-        },
-        v.Value
-    });
+        return Values.Select(v => new object[]
+        {
+            v.Key,
+            v.Value switch {
+                bool b => new byte[] { (byte)(b ? 'T' : 'F') },
+                DateTime d => GetTimestampData(d),
+                DateOnly d => Encoding.ASCII.GetBytes(d.ToString("yyyyMMdd")),
+                _ => Encoding.ASCII.GetBytes(v.Value.ToString()!)
+            },
+            v.Value
+        });
+
+        static byte[] GetTimestampData(DateTime timestamp)
+        {
+            const int JulianOffsetToDateTime = 1721426;
+
+            var buffer = new byte[8];
+            var target = buffer.AsSpan();
+            var timespan = timestamp - new DateTime(1, 1, 1);
+            var timestampDate = JulianOffsetToDateTime + (int)timespan.TotalDays;
+            MemoryMarshal.Write(target[..4], ref timestampDate);
+            var timestampTime = (int)(timespan - TimeSpan.FromDays(timespan.Days)).TotalMilliseconds;
+            MemoryMarshal.Write(target[4..], ref timestampTime);
+            return buffer;
+        }
+    }
 
     [Theory]
     [MemberData(nameof(GetValuesWithSourceData))]

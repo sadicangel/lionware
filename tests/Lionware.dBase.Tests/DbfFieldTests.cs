@@ -8,10 +8,14 @@ public sealed class DbfFieldTests
     {
         null,
         true,
+        (byte)123,
+        (short)12345,
         684692656,
         9053598978304173029,
+        0.05814f,
         0.058148685515572951,
         new DateTime(1987, 3, 29, 6, 30, 57),
+        new DateOnly(1987, 3, 29),
         "some-random-string!",
     };
 

@@ -16,7 +16,8 @@ namespace Lionware.dBase;
 [DebuggerDisplay("{" + nameof(GetDebuggerDisplay) + "(),nq}")]
 public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
 {
-    private const double JulianCalendarOffset = 2415018.5;
+    private const int JulianOffsetToDateTime = 1721426;
+    private static readonly DateTime DateTimeStart = new DateTime(1, 1, 1);
 
     [FieldOffset(0)]
     private readonly byte _name;
@@ -237,18 +238,18 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         {
             switch (_type)
             {
-                case DbfFieldType.Character when field.Type is TypeCode.String:
-                case DbfFieldType.Numeric when field.Type is TypeCode.Int64 or TypeCode.Double:
-                case DbfFieldType.Float when field.Type is TypeCode.Int64 or TypeCode.Double:
-                case DbfFieldType.Int32 when field.Type is TypeCode.Int32:
-                case DbfFieldType.Double when field.Type is TypeCode.Double:
-                case DbfFieldType.AutoIncrement when field.Type is TypeCode.Int32:
-                case DbfFieldType.Date when field.Type is TypeCode.DateTime:
-                case DbfFieldType.Timestamp when field.Type is TypeCode.DateTime:
-                case DbfFieldType.Logical when field.Type is TypeCode.Boolean:
-                case DbfFieldType.Memo when field.Type is TypeCode.String:
-                case DbfFieldType.Binary when field.Type is TypeCode.String:
-                case DbfFieldType.Ole when field.Type is TypeCode.String:
+                case DbfFieldType.Character when field._clrType is DbfField.ClrType.String:
+                case DbfFieldType.Numeric when field._clrType is DbfField.ClrType.Int64 or DbfField.ClrType.Double:
+                case DbfFieldType.Float when field._clrType is DbfField.ClrType.Int64 or DbfField.ClrType.Double:
+                case DbfFieldType.Int32 when field._clrType is DbfField.ClrType.Int32:
+                case DbfFieldType.Double when field._clrType is DbfField.ClrType.Double:
+                case DbfFieldType.AutoIncrement when field._clrType is DbfField.ClrType.Int32:
+                case DbfFieldType.Date when field._clrType is DbfField.ClrType.DateTime:
+                case DbfFieldType.Timestamp when field._clrType is DbfField.ClrType.DateTime:
+                case DbfFieldType.Logical when field._clrType is DbfField.ClrType.Boolean:
+                case DbfFieldType.Memo when field._clrType is DbfField.ClrType.String:
+                case DbfFieldType.Binary when field._clrType is DbfField.ClrType.String:
+                case DbfFieldType.Ole when field._clrType is DbfField.ClrType.String:
                     return;
                 default:
                     throw new InvalidOperationException($"Invalid {_type} value '{field.Value}'");
@@ -268,30 +269,26 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <exception cref="InvalidEnumArgumentException"></exception>
     public DbfField Read(ReadOnlySpan<byte> source, Encoding encoding, char decimalSeparator)
     {
-        source = source.Trim("\0 "u8);
-
-        if (source.Length == 0)
-            return Type is DbfFieldType.Character ? new(String.Empty, Length, Decimal) : new DbfField(Type, Length, Decimal);
-
         switch (Type)
         {
             case DbfFieldType.Character:
-                return new(encoding.GetString(source), Length, Decimal);
+                source = source.Trim("\0 "u8);
+                return source.Length > 0 ? new(encoding.GetString(source), Length, Decimal) : new(String.Empty, Length, Decimal);
 
             case DbfFieldType.Ole:
             case DbfFieldType.Memo:
             case DbfFieldType.Binary:
-                return new(encoding.GetString(source), Length, Decimal);
+                source = source.Trim("\0 "u8);
+                return source.Length > 0 ? new(encoding.GetString(source), Length, Decimal) : new DbfField(Type, Length, Decimal);
 
             case DbfFieldType.Numeric when Decimal is 0:
-                ReadOnlySpan<byte> @long = source.Trim("\0 "u8);
-
-                return new(Parse<long>(source, NumberStyles.Integer, encoding), Length, Decimal);
+                source = source.Trim("\0 "u8);
+                return source.Length > 0 ? new(Parse<long>(source, NumberStyles.Integer, encoding), Length, Decimal) : new DbfField(Type, Length, Decimal);
 
             case DbfFieldType.Numeric:
             case DbfFieldType.Float:
-                ReadOnlySpan<byte> @double = source.Trim("\0 "u8);
-                return new(Parse<double>(source, NumberStyles.Float, encoding, decimalSeparator), Length, Decimal);
+                source = source.Trim("\0 "u8);
+                return source.Length > 0 ? new(Parse<double>(source, NumberStyles.Float, encoding, decimalSeparator), Length, Decimal) : new DbfField(Type, Length, Decimal);
 
             case DbfFieldType.Int32:
             case DbfFieldType.AutoIncrement:
@@ -301,22 +298,27 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 return new(MemoryMarshal.Read<double>(source), Length, Decimal);
 
             case DbfFieldType.Date:
-                Span<char> date = stackalloc char[8];
-                encoding.GetChars(source[..8], date);
-                return new DbfField(DateTime.ParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture));
+                source = source.Trim("\0 "u8);
+                if (source.Length > 0)
+                {
+                    Span<char> date = stackalloc char[8];
+                    encoding.GetChars(source[..8], date);
+                    return new DbfField(DateOnly.ParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture));
+                }
+                return new DbfField(Type, Length, Decimal);
 
             case DbfFieldType.Timestamp:
-                return new(DateTime.FromOADate(MemoryMarshal.Read<int>(source[..4]) - JulianCalendarOffset) + TimeSpan.FromMilliseconds(MemoryMarshal.Read<int>(source.Slice(4, 4))), Length, Decimal);
+                return new(DateTimeStart.AddDays(MemoryMarshal.Read<int>(source[..4]) - JulianOffsetToDateTime).AddMilliseconds(MemoryMarshal.Read<int>(source.Slice(4, 4))));
 
             case DbfFieldType.Logical:
                 char logical = '\0';
                 encoding.GetChars(source[..1], MemoryMarshal.CreateSpan(ref logical, 1));
                 return Char.ToUpperInvariant(logical) switch
                 {
-                    '?' or ' ' => new DbfField(DbfFieldType.Logical, Length, Decimal),
-                    'T' or 'Y' or '1' => new DbfField(true, Length, Decimal),
-                    'F' or 'N' or '0' => new DbfField(false, Length, Decimal),
-                    _ => throw new InvalidOperationException($"Invalid {nameof(DbfFieldType.Logical)} value '{encoding.GetString(source)}'"),
+                    'T' or 'Y' or '1' => new DbfField(true),
+                    'F' or 'N' or '0' => new DbfField(false),
+                    //'?' or ' '
+                    _ => new DbfField(DbfFieldType.Logical, Length, Decimal),
                 };
 
             default:
@@ -407,7 +409,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                     break;
 
                 case DbfFieldType.Date:
-                    var date = field.ReadInlineValue<DateTime>();
+                    var date = field.ReadInlineValue<DateOnly>();
                     for (int i = 0, y = date.Year; i < 4; ++i, y /= 10)
                         target[i] = (byte)(y % 10 + '0');
                     for (int i = 4, m = date.Month; i < 6; ++i, m /= 10)
@@ -418,10 +420,11 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
 
                 case DbfFieldType.Timestamp:
                     var timestamp = field.ReadInlineValue<DateTime>();
-                    var julian = (int)(timestamp.Date.ToOADate() + JulianCalendarOffset);
-                    MemoryMarshal.Write(target[..4], ref julian);
-                    var milliseconds = (int)timestamp.TimeOfDay.TotalMilliseconds;
-                    MemoryMarshal.Write(target[4..], ref milliseconds);
+                    var timespan = timestamp - DateTimeStart;
+                    var timestampDate = JulianOffsetToDateTime + (int)timespan.TotalDays;
+                    MemoryMarshal.Write(target[..4], ref timestampDate);
+                    var timestampTime = (int)(timespan - TimeSpan.FromDays(timespan.Days)).TotalMilliseconds;
+                    MemoryMarshal.Write(target[4..], ref timestampTime);
                     break;
 
                 case DbfFieldType.Logical:
@@ -568,6 +571,28 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         {
             Name = nameSpan,
             Type = DbfFieldType.Date,
+            Length = 8,
+            Decimal = 0
+        };
+    }
+
+    /// <summary>
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Timestamp" />.
+    /// </summary>
+    /// <param name="name">The name of the field.</param>
+    /// <returns>
+    /// A new instance of <see cref="DbfFieldDescriptor" />
+    /// </returns>
+    public static DbfFieldDescriptor Timestamp(string name)
+    {
+        Span<byte> nameSpan = stackalloc byte[20];
+        nameSpan.Clear();
+        Encoding.ASCII.GetBytes(name, nameSpan);
+        nameSpan = nameSpan[..10];
+        return new()
+        {
+            Name = nameSpan,
+            Type = DbfFieldType.Timestamp,
             Length = 8,
             Decimal = 0
         };

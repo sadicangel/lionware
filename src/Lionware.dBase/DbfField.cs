@@ -16,8 +16,23 @@ namespace Lionware.dBase;
 [StructLayout(LayoutKind.Explicit, Size = 24)]
 public readonly struct DbfField : IEquatable<DbfField>
 {
+    internal enum ClrType : byte
+    {
+        Empty = 0,
+        Boolean = 3,
+        Byte = 6,
+        Int16 = 7,
+        Int32 = 9,
+        Int64 = 11,
+        Single = 13,
+        Double = 14,
+        DateTime = 16,
+        DateOnly = 17,
+        String = 18
+    }
+
     // type code of the value.
-    [FieldOffset(0)] private readonly byte _type;
+    [FieldOffset(0)] internal readonly ClrType _clrType;
     // dbf type of the value.
     [FieldOffset(1)] private readonly DbfFieldType _dbfType;
     // true if value is stored locally; false if it's a value on the heap.
@@ -44,7 +59,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     public DbfField(DbfFieldType type, byte length, byte @decimal)
     {
         _inlineSize = sizeof(bool);
-        _type = (byte)TypeCode.Empty;
+        _clrType = ClrType.Empty;
         _dbfType = type;
         _isInline = true;
         _length = length;
@@ -55,16 +70,14 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// Initializes a new instance of the <see cref="DbfField" /> struct.
     /// </summary>
     /// <param name="value">The field value.</param>
-    /// <param name="length">The number of characters the field should have when stored.</param>
-    /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(bool value, byte length = 1, byte @decimal = 0)
+    public DbfField(bool value)
     {
         _inlineSize = sizeof(bool);
-        _type = (byte)TypeCode.Boolean;
+        _clrType = ClrType.Boolean;
         _dbfType = DbfFieldType.Logical;
         _isInline = true;
-        _length = length;
-        _decimal = @decimal;
+        _length = 1;
+        _decimal = 0;
         WriteInlineValue(value);
     }
 
@@ -77,7 +90,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     public DbfField(byte value, byte length = 3, byte @decimal = 0)
     {
         _inlineSize = sizeof(byte);
-        _type = (byte)TypeCode.Byte;
+        _clrType = ClrType.Byte;
         _dbfType = DbfFieldType.Numeric;
         _isInline = true;
         _length = length;
@@ -94,7 +107,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     public DbfField(short value, byte length = 5, byte @decimal = 0)
     {
         _inlineSize = sizeof(short);
-        _type = (byte)TypeCode.Int16;
+        _clrType = ClrType.Int16;
         _dbfType = DbfFieldType.Numeric;
         _isInline = true;
         _length = length;
@@ -111,7 +124,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     public DbfField(int value, byte length = 10, byte @decimal = 0)
     {
         _inlineSize = sizeof(int);
-        _type = (byte)TypeCode.Int32;
+        _clrType = ClrType.Int32;
         _dbfType = DbfFieldType.Numeric;
         _isInline = true;
         _length = length;
@@ -128,7 +141,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     public DbfField(long value, byte length = 19, byte @decimal = 0)
     {
         _inlineSize = sizeof(long);
-        _type = (byte)TypeCode.Int64;
+        _clrType = ClrType.Int64;
         _dbfType = DbfFieldType.Numeric;
         _isInline = true;
         _length = length;
@@ -145,7 +158,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     public DbfField(float value, byte length = 14, byte @decimal = 7)
     {
         _inlineSize = sizeof(float);
-        _type = (byte)TypeCode.Single;
+        _clrType = ClrType.Single;
         _dbfType = DbfFieldType.Numeric;
         _isInline = true;
         _length = length;
@@ -162,7 +175,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     public DbfField(double value, byte length = 30, byte @decimal = 15)
     {
         _inlineSize = sizeof(double);
-        _type = (byte)TypeCode.Double;
+        _clrType = ClrType.Double;
         _dbfType = DbfFieldType.Numeric;
         _isInline = true;
         _length = length;
@@ -174,16 +187,29 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// Initializes a new instance of the <see cref="DbfField" /> struct.
     /// </summary>
     /// <param name="value">The field value.</param>
-    /// <param name="length">The number of characters the field should have when stored.</param>
-    /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(DateTime value, byte length = 8, byte @decimal = 0)
+    public DbfField(DateTime value)
     {
         _inlineSize = (byte)Unsafe.SizeOf<DateTime>();
-        _type = (byte)TypeCode.DateTime;
+        _clrType = ClrType.DateTime;
+        _dbfType = DbfFieldType.Timestamp;
+        _isInline = true;
+        _length = 8;
+        _decimal = 0;
+        WriteInlineValue(value);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DbfField" /> struct.
+    /// </summary>
+    /// <param name="value">The field value.</param>
+    public DbfField(DateOnly value)
+    {
+        _inlineSize = (byte)Unsafe.SizeOf<DateOnly>();
+        _clrType = ClrType.DateOnly;
         _dbfType = DbfFieldType.Date;
         _isInline = true;
-        _length = length;
-        _decimal = @decimal;
+        _length = 8;
+        _decimal = 0;
         WriteInlineValue(value);
     }
 
@@ -205,13 +231,13 @@ public readonly struct DbfField : IEquatable<DbfField>
         _referenceValue = value;
         if (value is not null)
         {
-            _type = (byte)TypeCode.String;
+            _clrType = ClrType.String;
             if (value.Length > 254)
                 _referenceValue = value[..254];
         }
         else
         {
-            _type = (byte)TypeCode.Empty;
+            _clrType = ClrType.Empty;
         }
         _dbfType = DbfFieldType.Character;
         _length = length;
@@ -221,9 +247,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <summary>
     /// Gets a value indicating whether this instance is <see langword="null" />.
     /// </summary>
-    public readonly bool IsNull { get => Type is TypeCode.Empty; }
-
-    internal readonly TypeCode Type { get => (TypeCode)_type; }
+    public readonly bool IsNull { get => _clrType is ClrType.Empty; }
 
     /// <summary>
     /// Gets the span stored in this instance, sliced to the correct size.
@@ -233,7 +257,7 @@ public readonly struct DbfField : IEquatable<DbfField>
 
     /// <summary>
     /// Gets the reference stored by this instance. The value is <see langword="null"/>
-    /// ff type is <see cref="TypeCode.Empty"/> or not a reference value.
+    /// ff type is <see cref="ClrType.Empty"/> or not a reference value.
     /// </summary>
     internal readonly string? ReferenceValue { get => _referenceValue; }
 
@@ -243,16 +267,17 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <remarks>The value is boxed for value types.</remarks>
     public object? Value
     {
-        get => Type switch
+        get => _clrType switch
         {
-            TypeCode.Boolean => ReadInlineValue<bool>(),
-            TypeCode.Byte => ReadInlineValue<byte>(),
-            TypeCode.Int16 => ReadInlineValue<short>(),
-            TypeCode.Int32 => ReadInlineValue<int>(),
-            TypeCode.Int64 => ReadInlineValue<long>(),
-            TypeCode.Single => ReadInlineValue<float>(),
-            TypeCode.Double => ReadInlineValue<double>(),
-            TypeCode.DateTime => ReadInlineValue<DateTime>(),
+            ClrType.Boolean => ReadInlineValue<bool>(),
+            ClrType.Byte => ReadInlineValue<byte>(),
+            ClrType.Int16 => ReadInlineValue<short>(),
+            ClrType.Int32 => ReadInlineValue<int>(),
+            ClrType.Int64 => ReadInlineValue<long>(),
+            ClrType.Single => ReadInlineValue<float>(),
+            ClrType.Double => ReadInlineValue<double>(),
+            ClrType.DateTime => ReadInlineValue<DateTime>(),
+            ClrType.DateOnly => ReadInlineValue<DateOnly>(),
             _ => _referenceValue,
         };
     }
@@ -263,7 +288,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <remarks>The value is boxed for value types.</remarks>
     public T? GetValue<T>() => (T?)Value;
 
-    private void ThrowInvalidType(TypeCode expectedType) => throw new InvalidOperationException($"Cannot convert value to {expectedType}. Field type is {_type}");
+    private void ThrowInvalidType(ClrType expectedType) => throw new InvalidOperationException($"Cannot convert value to {expectedType}. Field type is {_clrType}");
 
     /// <summary>
     /// Gets the <see cref="bool"/> value of this <see cref="DbfRecord"/>.
@@ -271,8 +296,8 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public bool GetBoolean()
     {
-        if (Type is not TypeCode.Boolean)
-            ThrowInvalidType(TypeCode.Boolean);
+        if (_clrType is not ClrType.Boolean)
+            ThrowInvalidType(ClrType.Boolean);
         return ReadInlineValue<bool>();
     }
 
@@ -284,7 +309,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public bool GetBooleanOrDefault(bool defaultValue = default)
     {
-        if (Type is TypeCode.Empty)
+        if (_clrType is ClrType.Empty)
             return defaultValue;
         return GetBoolean();
     }
@@ -295,8 +320,8 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public byte GetByte()
     {
-        if (Type is not TypeCode.Byte)
-            ThrowInvalidType(TypeCode.Byte);
+        if (_clrType is not ClrType.Byte)
+            ThrowInvalidType(ClrType.Byte);
         return ReadInlineValue<byte>();
     }
 
@@ -308,7 +333,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public byte GetByteOrDefault(byte defaultValue = default)
     {
-        if (Type is TypeCode.Empty)
+        if (_clrType is ClrType.Empty)
             return defaultValue;
         return GetByte();
     }
@@ -319,8 +344,8 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public short GetInt16()
     {
-        if (Type is not TypeCode.Int16)
-            ThrowInvalidType(TypeCode.Int16);
+        if (_clrType is not ClrType.Int16)
+            ThrowInvalidType(ClrType.Int16);
         return ReadInlineValue<short>();
     }
 
@@ -332,7 +357,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public short GetInt16OrDefault(short defaultValue = default)
     {
-        if (Type is TypeCode.Empty)
+        if (_clrType is ClrType.Empty)
             return defaultValue;
         return GetInt16();
     }
@@ -343,8 +368,8 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public int GetInt32()
     {
-        if (Type is not TypeCode.Int32)
-            ThrowInvalidType(TypeCode.Int32);
+        if (_clrType is not ClrType.Int32)
+            ThrowInvalidType(ClrType.Int32);
         return ReadInlineValue<int>();
     }
 
@@ -356,7 +381,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public int GetInt32OrDefault(int defaultValue = default)
     {
-        if (Type is TypeCode.Empty)
+        if (_clrType is ClrType.Empty)
             return defaultValue;
         return GetInt32();
     }
@@ -367,8 +392,8 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public long GetInt64()
     {
-        if (Type is not TypeCode.Int64)
-            ThrowInvalidType(TypeCode.Int64);
+        if (_clrType is not ClrType.Int64)
+            ThrowInvalidType(ClrType.Int64);
         return ReadInlineValue<long>();
     }
 
@@ -380,7 +405,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public long GetInt64OrDefault(long defaultValue = default)
     {
-        if (Type is TypeCode.Empty)
+        if (_clrType is ClrType.Empty)
             return defaultValue;
         return GetInt64();
     }
@@ -391,8 +416,8 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public float GetSingle()
     {
-        if (Type is not TypeCode.Single)
-            ThrowInvalidType(TypeCode.Single);
+        if (_clrType is not ClrType.Single)
+            ThrowInvalidType(ClrType.Single);
         return ReadInlineValue<float>();
     }
 
@@ -404,7 +429,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public float GetSingleOrDefault(float defaultValue = default)
     {
-        if (Type is TypeCode.Empty)
+        if (_clrType is ClrType.Empty)
             return defaultValue;
         return GetSingle();
     }
@@ -415,8 +440,8 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public double GetDouble()
     {
-        if (Type is not TypeCode.Double)
-            ThrowInvalidType(TypeCode.Double);
+        if (_clrType is not ClrType.Double)
+            ThrowInvalidType(ClrType.Double);
         return ReadInlineValue<double>();
     }
 
@@ -428,7 +453,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public double GetDoubleOrDefault(double defaultValue = default)
     {
-        if (Type is TypeCode.Empty)
+        if (_clrType is ClrType.Empty)
             return defaultValue;
         return GetDouble();
     }
@@ -439,8 +464,8 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public DateTime GetDateTime()
     {
-        if (Type is not TypeCode.DateTime)
-            ThrowInvalidType(TypeCode.DateTime);
+        if (_clrType is not ClrType.DateTime)
+            ThrowInvalidType(ClrType.DateTime);
         return ReadInlineValue<DateTime>();
     }
 
@@ -452,9 +477,33 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public DateTime GetDateTimeOrDefault(DateTime defaultValue = default)
     {
-        if (Type is TypeCode.Empty)
+        if (_clrType is ClrType.Empty)
             return defaultValue;
         return GetDateTime();
+    }
+
+    /// <summary>
+    /// Gets the <see cref="DateOnly"/> value of this <see cref="DbfRecord"/>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException" />
+    public DateOnly GetDateOnly()
+    {
+        if (_clrType is not ClrType.DateOnly)
+            ThrowInvalidType(ClrType.DateOnly);
+        return ReadInlineValue<DateOnly>();
+    }
+
+    /// <summary>
+    /// Gets the <see cref="DateOnly"/> value of this <see cref="DbfRecord"/>
+    /// or the specified <paramref name="defaultValue"/> if the field is empty.
+    /// </summary>
+    /// <param name="defaultValue">The default value to return if the field is empty.</param>
+    /// <exception cref="InvalidOperationException" />
+    public DateOnly GetDateOnlyOrDefault(DateOnly defaultValue = default)
+    {
+        if (_clrType is ClrType.Empty)
+            return defaultValue;
+        return GetDateOnly();
     }
 
     /// <summary>
@@ -463,8 +512,8 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <exception cref="InvalidOperationException" />
     public string GetString()
     {
-        if (Type is not TypeCode.String)
-            ThrowInvalidType(TypeCode.String);
+        if (_clrType is not ClrType.String)
+            ThrowInvalidType(ClrType.String);
         return _referenceValue!;
     }
 
@@ -477,7 +526,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     [return: NotNullIfNotNull(nameof(defaultValue))]
     public string? GetStringOrDefault(string? defaultValue = default)
     {
-        if (Type is TypeCode.Empty)
+        if (_clrType is ClrType.Empty)
             return defaultValue;
         return GetString();
     }
@@ -490,7 +539,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// </returns>
     public override string ToString()
     {
-        if ((TypeCode)_type is TypeCode.Empty)
+        if (_clrType is ClrType.Empty)
             return String.Empty;
 
         return _dbfType switch
@@ -501,8 +550,8 @@ public readonly struct DbfField : IEquatable<DbfField>
             DbfFieldType.Int32 or
             DbfFieldType.Double or
             DbfFieldType.AutoIncrement => Convert.ToDouble(Value).ToString($"F{_decimal}"),
-            DbfFieldType.Date => GetDateTime().ToString("yyyyMMdd"),
-            DbfFieldType.Timestamp => GetDateTime().ToString("HHmmss"),
+            DbfFieldType.Date => GetDateOnly().ToString("yyyyMMdd"),
+            DbfFieldType.Timestamp => GetDateTime().ToString("o"),
             DbfFieldType.Logical => GetBoolean() ? "T" : "F",
             DbfFieldType.Memo => throw new NotImplementedException(),
             DbfFieldType.Binary => throw new NotImplementedException(),
@@ -520,7 +569,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <inheritdoc />
     public bool Equals(DbfField other)
     {
-        if (_type != other._type)
+        if (_clrType != other._clrType)
             return false;
 
         if (_inlineSize != other._inlineSize)
@@ -551,7 +600,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     public override int GetHashCode()
     {
         var hash = new HashCode();
-        hash.Add(_type);
+        hash.Add(_clrType);
         hash.Add(_inlineSize);
         hash.Add(_isInline);
         if (!_isInline)
@@ -574,13 +623,17 @@ public readonly struct DbfField : IEquatable<DbfField>
 
     private T ConvertTo<T>() where T : struct
     {
-        switch (Type)
+        switch (_clrType)
         {
-            case TypeCode.Boolean when typeof(T) == typeof(bool):
-            case TypeCode.Int32 when typeof(T) == typeof(int):
-            case TypeCode.Int64 when typeof(T) == typeof(long):
-            case TypeCode.Double when typeof(T) == typeof(double):
-            case TypeCode.DateTime when typeof(T) == typeof(DateTime):
+            case ClrType.Boolean when typeof(T) == typeof(bool):
+            case ClrType.Byte when typeof(T) == typeof(byte):
+            case ClrType.Int16 when typeof(T) == typeof(short):
+            case ClrType.Int32 when typeof(T) == typeof(int):
+            case ClrType.Int64 when typeof(T) == typeof(long):
+            case ClrType.Single when typeof(T) == typeof(float):
+            case ClrType.Double when typeof(T) == typeof(double):
+            case ClrType.DateTime when typeof(T) == typeof(DateTime):
+            case ClrType.DateOnly when typeof(T) == typeof(DateOnly):
                 break;
             default:
                 throw new InvalidCastException();
@@ -652,6 +705,13 @@ public readonly struct DbfField : IEquatable<DbfField>
     public static explicit operator DateTime(DbfField value) => value.ConvertTo<DateTime>();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateTime" /><see langword="?" />.</summary>
     public static explicit operator DateTime?(DbfField value) => value.ConvertToNullable<DateTime>();
+
+    /// <summary>Performs an implicit conversion from <see cref="DateOnly" /> to <see cref="DbfField" />.</summary>
+    public static implicit operator DbfField(DateOnly value) => new(value);
+    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateOnly" /><see langword="?" />.</summary>
+    public static explicit operator DateOnly(DbfField value) => value.ConvertTo<DateOnly>();
+    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateOnly" /><see langword="?" />.</summary>
+    public static explicit operator DateOnly?(DbfField value) => value.ConvertToNullable<DateOnly>();
 
     /// <summary>Performs an implicit conversion from <see cref="string"/> to <see cref="DbfField"/>.</summary>
     public static implicit operator DbfField(string? value) => value is null ? new() : new(value);
