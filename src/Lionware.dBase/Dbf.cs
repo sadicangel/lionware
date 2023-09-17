@@ -12,7 +12,7 @@ namespace Lionware.dBase;
 /// </summary>
 /// <seealso cref="IDisposable" />
 /// <seealso cref="ICollection{T}" />
-public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
+public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
 {
     private const int EofByte = 0x1A;
 
@@ -274,7 +274,7 @@ public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
                     : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
                 _stream.Position = offset;
                 _stream.Read(buffer);
-                return _recordDescriptor.Read(buffer, Encoding, DecimalSeparator);
+                return _recordDescriptor.Read(buffer, this);
             }
             finally
             {
@@ -285,7 +285,6 @@ public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
         set
         {
             Ensure.InRange(index, 0, RecordCount);
-            Ensure.NotNull(value);
 
             byte[]? array = null;
             try
@@ -294,7 +293,7 @@ public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
                 Span<byte> buffer = RecordLength < 256
                     ? stackalloc byte[RecordLength]
                     : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
-                _recordDescriptor.Write(value, buffer, Encoding, DecimalSeparator);
+                _recordDescriptor.Write(value, buffer, this);
                 _stream.Position = offset;
                 _stream.Write(buffer);
                 UpdateLastUpdated();
@@ -328,15 +327,45 @@ public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
             Ensure.InRange(recordIndex, 0, RecordCount);
             Ensure.InRange(fieldIndex, 0, _recordDescriptor.Count);
 
-            long offset = HeaderLength + RecordLength * recordIndex;
-            // Skip to field.
-            for (int i = 0; i < fieldIndex; ++i)
-                offset += _recordDescriptor[i].Length;
-            _stream.Position = offset;
-            ref readonly var descriptor = ref _recordDescriptor[fieldIndex];
-            Span<byte> buffer = stackalloc byte[descriptor.Length]; // At most, 255 bytes.
-            _stream.Read(buffer);
-            return descriptor.Read(buffer, Encoding, DecimalSeparator);
+            byte[]? array = null;
+            try
+            {
+                long offset = HeaderLength + RecordLength * recordIndex;
+                Span<byte> buffer = RecordLength < 256
+                    ? stackalloc byte[RecordLength]
+                    : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
+                _stream.Position = offset;
+                _stream.Read(buffer);
+                return _recordDescriptor.Read(buffer, fieldIndex, this);
+            }
+            finally
+            {
+                if (array is not null)
+                    ArrayPool<byte>.Shared.Return(array);
+            }
+        }
+        set
+        {
+            Ensure.InRange(recordIndex, 0, RecordCount);
+            Ensure.InRange(fieldIndex, 0, _recordDescriptor.Count);
+
+            byte[]? array = null;
+            try
+            {
+                long offset = HeaderLength + RecordLength * recordIndex;
+                Span<byte> buffer = RecordLength < 256
+                    ? stackalloc byte[RecordLength]
+                    : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
+                _recordDescriptor.Write(in value, buffer, fieldIndex, this);
+                _stream.Position = offset;
+                _stream.Write(buffer);
+                UpdateLastUpdated();
+            }
+            finally
+            {
+                if (array is not null)
+                    ArrayPool<byte>.Shared.Return(array);
+            }
         }
     }
 
@@ -411,7 +440,7 @@ public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
                 ? stackalloc byte[RecordLength]
                 : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
             _stream.Position = HeaderLength + RecordLength * RecordCount;
-            _recordDescriptor.Write(record, buffer, Encoding, DecimalSeparator);
+            _recordDescriptor.Write(record, buffer, this);
             _stream.Write(buffer);
             _stream.WriteByte(EofByte); // EOF.
             UpdateLastUpdated();
@@ -441,7 +470,7 @@ public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
             _stream.Position = HeaderLength + RecordLength * RecordCount;
             foreach (var record in records)
             {
-                _recordDescriptor.Write(record, buffer, Encoding, DecimalSeparator);
+                _recordDescriptor.Write(record, buffer, this);
                 _stream.Write(buffer);
                 ++count;
             }
@@ -482,7 +511,7 @@ public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
             long offset = HeaderLength + RecordLength * i;
             _stream.Position = offset;
             _stream.Read(buffer.AsSpan(0, RecordLength));
-            yield return _recordDescriptor.Read(buffer.AsSpan(0, RecordLength), Encoding, DecimalSeparator);
+            yield return _recordDescriptor.Read(buffer.AsSpan(0, RecordLength), this);
         }
         ArrayPool<byte>.Shared.Return(buffer);
     }

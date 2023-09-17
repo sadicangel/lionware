@@ -4,6 +4,14 @@ using System.Text;
 namespace Lionware.dBase;
 public sealed class DbfFieldDescriptorTests
 {
+    private sealed record class DbfContextImpl : IDbfContext
+    {
+        public Encoding Encoding { get => Encoding.ASCII; }
+        public char DecimalSeparator { get => '.'; }
+    }
+
+    private static readonly IDbfContext DbfContext = new DbfContextImpl();
+
     private static readonly Dictionary<DbfFieldDescriptor, object> Values = new()
     {
         [DbfFieldDescriptor.Boolean("bool_field")] = true,
@@ -51,7 +59,7 @@ public sealed class DbfFieldDescriptorTests
     [MemberData(nameof(GetValuesWithSourceData))]
     public void DbfFieldDescriptor_Read_ReadsFields(DbfFieldDescriptor descriptor, byte[] source, object expectedValue)
     {
-        var field = descriptor.Read(source, Encoding.ASCII, '.');
+        var field = descriptor.CreateReader().Invoke(source, DbfContext);
         Assert.Equal(expectedValue, field.Value);
     }
 }

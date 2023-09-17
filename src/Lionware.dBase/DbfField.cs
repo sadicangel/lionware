@@ -34,7 +34,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     // type code of the value.
     [FieldOffset(0)] internal readonly ClrType _clrType;
     // dbf type of the value.
-    [FieldOffset(1)] private readonly DbfFieldType _dbfType;
+    [FieldOffset(1)] internal readonly DbfFieldType _dbfType;
     // true if value is stored locally; false if it's a value on the heap.
     [FieldOffset(2)] private readonly bool _isInline;
     // size in bytes of the value (0 when not stored locally).

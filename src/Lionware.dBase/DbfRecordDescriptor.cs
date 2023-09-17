@@ -1,6 +1,5 @@
 ﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace Lionware.dBase;
 
@@ -12,6 +11,9 @@ public readonly struct DbfRecordDescriptor : IEquatable<DbfRecordDescriptor>
 {
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private readonly DbfFieldDescriptor[] _fieldDescriptors;
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private readonly DbfFieldMarshaller[] _fieldMarshallers;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DbfRecordDescriptor" /> class.
@@ -26,9 +28,14 @@ public readonly struct DbfRecordDescriptor : IEquatable<DbfRecordDescriptor>
     {
         Ensure.NotNull(fieldDescriptors);
         _fieldDescriptors = fieldDescriptors;
+        _fieldMarshallers = new DbfFieldMarshaller[fieldDescriptors.Length];
         // Make sure the fields have proper lengths.
-        foreach (ref readonly var descriptor in this)
+        for (int i = 0; i < _fieldDescriptors.Length; ++i)
+        {
+            ref readonly var descriptor = ref _fieldDescriptors[i];
             descriptor.CoerceLength();
+            _fieldMarshallers[i] = descriptor.CreateMarshaller();
+        }
     }
 
     /// <summary>
@@ -98,42 +105,48 @@ public readonly struct DbfRecordDescriptor : IEquatable<DbfRecordDescriptor>
         return -1;
     }
 
-    /// <summary>
-    /// Reads a <see cref="DbfRecord"/> from <paramref name="source"/> using the 
-    /// properties defined in this instance.
-    /// </summary>
-    /// <param name="source">The span to read from.</param>
-    /// <param name="encoding">The encoding to use when converting bytes to chars.</param>
-    /// <param name="decimalSeparator">The separator used for decimal numbers.</param>
-    /// <returns></returns>
-    public DbfRecord Read(in ReadOnlySpan<byte> source, Encoding encoding, char decimalSeparator)
+    internal DbfRecord Read(ReadOnlySpan<byte> source, IDbfContext context)
     {
-        var rStatus = (DbfRecord.Status)source[0];
+        var status = (DbfRecord.Status)source[0];
+        source = source[1..];
 
-        var buffer = source[1..];
-        var rFields = new DbfField[Count];
-
-        for (int i = 0; i < Count; ++i)
+        var fields = new DbfField[_fieldMarshallers.Length];
+        for (int i = 0; i < fields.Length; ++i)
         {
-            ref readonly var descriptor = ref _fieldDescriptors[i];
-
-            rFields[i] = descriptor.Read(buffer[..descriptor.Length], encoding, decimalSeparator);
-            buffer = buffer[descriptor.Length..];
+            var length = _fieldDescriptors[i].Length;
+            fields[i] = _fieldMarshallers[i].Read(source[..length], context);
+            source = source[length..];
         }
 
-        return new DbfRecord(rStatus, rFields);
+        return new DbfRecord(status, fields);
     }
 
-    /// <summary>
-    /// Writes a <see cref="DbfRecord"/> to the <paramref name="target"/> using the 
-    /// properties defined in this instance.
-    /// </summary>
-    /// <param name="record">The record to write.</param>
-    /// <param name="target">The span to write to.</param>
-    /// <param name="encoding">The encoding to use when converting bytes to chars.</param>
-    /// <param name="decimalSeparator">The separator used for decimal numbers.</param>
-    /// <returns></returns>
-    public void Write(DbfRecord record, Span<byte> target, Encoding encoding, char decimalSeparator)
+    internal DbfField Read(ReadOnlySpan<byte> source, int index, IDbfContext context)
+    {
+        // Skip to field.
+        source = source[1..];
+        for (int i = 0; i < index; ++i)
+            source = source[_fieldDescriptors[i].Length..];
+        var length = _fieldDescriptors[index].Length;
+        return _fieldMarshallers[index].Read(source[..length], context);
+    }
+
+    internal void Write(in DbfField field, Span<byte> target, int index, IDbfContext context)
+    {
+        ref readonly var descriptor = ref _fieldDescriptors[index];
+        if (field._dbfType != descriptor.Type)
+            throw new ArgumentException("Invalid field", nameof(field));
+
+        // Skip to field.
+        target = target[1..];
+        for (int i = 0; i < index; ++i)
+            target = target[_fieldDescriptors[i].Length..];
+
+        var length = descriptor.Length;
+        _fieldMarshallers[index].Write(in field, target, context);
+    }
+
+    internal void Write(DbfRecord record, Span<byte> target, IDbfContext context)
     {
         if (Count != record.FieldCount)
             throw new ArgumentException("Invalid record", nameof(record));
@@ -142,10 +155,9 @@ public readonly struct DbfRecordDescriptor : IEquatable<DbfRecordDescriptor>
         target = target[1..];
         for (int i = 0; i < record.FieldCount; ++i)
         {
-            ref readonly var descriptor = ref _fieldDescriptors[i];
-            ref readonly var field = ref record[i];
-            descriptor.Write(in field, target[..descriptor.Length], encoding, decimalSeparator);
-            target = target[descriptor.Length..];
+            var length = _fieldDescriptors[i].Length;
+            _fieldMarshallers[i].Write(in record[i], target[..length], context);
+            target = target[length..];
         }
     }
 
