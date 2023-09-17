@@ -1,7 +1,7 @@
-﻿using System.Buffers;
+﻿using Lionware.IO;
+using System.Buffers;
 using System.Collections;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -127,7 +127,53 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// Gets the <see cref="DbfRecord" /> at the specified index.
     /// </summary>
     /// <param name="index">The record index.</param>
-    public DbfRecord this[int index] { get => GetRecordAt(index); set => SetRecordAt(index, value); }
+    public DbfRecord this[int index]
+    {
+        get
+        {
+            Ensure.InRange(index, 0, RecordCount);
+
+            byte[]? array = null;
+            try
+            {
+                long offset = HeaderLength + RecordLength * index;
+                Span<byte> buffer = RecordLength < 256
+                    ? stackalloc byte[RecordLength]
+                    : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
+                _stream.Position = offset;
+                _stream.Read(buffer);
+                return RecordDescriptor.Read(buffer, Encoding, DecimalSeparator);
+            }
+            finally
+            {
+                if (array is not null)
+                    ArrayPool<byte>.Shared.Return(array);
+            }
+        }
+        set
+        {
+            Ensure.InRange(index, 0, RecordCount);
+            Ensure.NotNull(value);
+
+            byte[]? array = null;
+            try
+            {
+                long offset = HeaderLength + RecordLength * index;
+                Span<byte> buffer = RecordLength < 256
+                    ? stackalloc byte[RecordLength]
+                    : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
+                RecordDescriptor.Write(value, buffer, Encoding, DecimalSeparator);
+                _stream.Position = offset;
+                _stream.Write(buffer);
+                UpdateLastUpdated();
+            }
+            finally
+            {
+                if (array is not null)
+                    ArrayPool<byte>.Shared.Return(array);
+            }
+        }
+    }
 
     /// <summary>
     /// Gets the <see cref="DbfField" /> at the specified <paramref name="fieldIndex" />
@@ -135,7 +181,24 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// </summary>
     /// <param name="recordIndex">Index of the record.</param>
     /// <param name="fieldIndex">Index of the field.</param>
-    public DbfField this[int recordIndex, int fieldIndex] { get => GetFieldAt(recordIndex, fieldIndex); }
+    public DbfField this[int recordIndex, int fieldIndex]
+    {
+        get
+        {
+            Ensure.InRange(recordIndex, 0, RecordCount);
+            Ensure.InRange(fieldIndex, 0, RecordDescriptor.Count);
+
+            long offset = HeaderLength + RecordLength * recordIndex;
+            // Skip to field.
+            for (int i = 0; i < fieldIndex; ++i)
+                offset += RecordDescriptor[i].Length;
+            _stream.Position = offset;
+            ref readonly var descriptor = ref RecordDescriptor[fieldIndex];
+            Span<byte> buffer = stackalloc byte[descriptor.Length]; // At most, 255 bytes.
+            _stream.Read(buffer);
+            return descriptor.Read(buffer, Encoding, DecimalSeparator);
+        }
+    }
 
     /// <summary>
     /// Gets the <see cref="DbfField" /> with the specified <paramref name="fieldName" />
@@ -143,7 +206,16 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// </summary>
     /// <param name="recordIndex">Index of the record.</param>
     /// <param name="fieldName">Name of the field.</param>
-    public DbfField this[int recordIndex, string fieldName] { get => GetFieldAt(recordIndex, fieldName); }
+    public DbfField this[int recordIndex, string fieldName]
+    {
+        get
+        {
+            var fieldIndex = RecordDescriptor.IndexOf(fieldName);
+            if (fieldIndex >= 0)
+                return this[recordIndex, fieldIndex];
+            throw new ArgumentOutOfRangeException(nameof(fieldName));
+        }
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Dbf"/> class from an existing file.
@@ -240,6 +312,24 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
         _stream.Position = 0;
     }
 
+    // Updates timestamp of last modified.
+    private void UpdateLastUpdated()
+    {
+        var now = DateTime.UtcNow.Date;
+        if (LastUpdate != now)
+        {
+            LastUpdate = now;
+            Span<byte> buffer = stackalloc byte[3]
+            {
+                (byte)(LastUpdate.Year - 1900),
+                (byte)LastUpdate.Month,
+                (byte)LastUpdate.Day
+            };
+            _stream.Position = 1;
+            _stream.Write(buffer);
+        }
+    }
+
     /// <summary>
     /// Copies all data to another file and then returns a new instance of <see cref="Dbf" />
     /// pointing to the newly created file.
@@ -255,34 +345,25 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// <returns></returns>
     public Dbf Clone(Stream stream)
     {
-        var storedPosition = stream.Position;
-
-        try
+        // Copy relevant header values.
+        var dbf = new Dbf(stream)
         {
-            // Copy relevant header values.
-            var dbf = new Dbf(stream)
-            {
-                Version = Version,
-                HasDosMemo = HasDosMemo,
-                HasSqlTable = HasSqlTable,
-                HasDbtMemo = HasDbtMemo,
-                IsEncrypted = IsEncrypted,
-                HasMdxFile = HasMdxFile,
-                Language = Language,
-            };
+            Version = Version,
+            HasDosMemo = HasDosMemo,
+            HasSqlTable = HasSqlTable,
+            HasDbtMemo = HasDbtMemo,
+            IsEncrypted = IsEncrypted,
+            HasMdxFile = HasMdxFile,
+            Language = Language,
+        };
 
-            // Clone the records.
-            dbf.AddRange(this.Select(record => record with { }));
+        // Clone the records.
+        dbf.AddRange(this.Select(record => record with { }));
 
-            // Make sure we start at 0.
-            dbf._stream.Position = 0;
+        // Make sure we start at 0.
+        dbf._stream.Position = 0;
 
-            return dbf;
-        }
-        finally
-        {
-            stream.Position = storedPosition;
-        }
+        return dbf;
     }
 
     private void Dispose(bool disposing)
@@ -304,133 +385,6 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
         GC.SuppressFinalize(this);
     }
 
-    #region SUPPORT METHODS
-    private DbfRecord ReadRecord(ReadOnlySpan<byte> source) => RecordDescriptor.Read(source, Encoding, DecimalSeparator);
-
-    private void WriteRecord(DbfRecord record, Span<byte> target) => RecordDescriptor.Write(record, target, Encoding, DecimalSeparator);
-
-    private void SetValue<T>(ref T field, T value, long offset) where T : unmanaged
-    {
-        if (!EqualityComparer<T>.Default.Equals(field, value))
-        {
-            var storedPosition = _stream.Position;
-            try
-            {
-                _stream.Position = offset;
-                field = value;
-                _stream.Write(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in value), 1)));
-            }
-            finally
-            {
-                _stream.Position = storedPosition;
-            }
-        }
-    }
-
-    private void UpdateLastUpdated()
-    {
-        var now = DateTime.UtcNow.Date;
-        if (LastUpdate != now)
-        {
-            var storedPosition = _stream.Position;
-            try
-            {
-                LastUpdate = now;
-                Span<byte> buffer = stackalloc byte[3]
-                {
-                    (byte)(LastUpdate.Year - 1900),
-                    (byte)LastUpdate.Month,
-                    (byte)LastUpdate.Day
-                };
-                _stream.Position = 1;
-                _stream.Write(buffer);
-            }
-            finally
-            {
-                _stream.Position = storedPosition;
-            }
-        }
-    }
-
-    private DbfRecord GetRecordAt(int index)
-    {
-        Ensure.InRange(index, 0, RecordCount);
-
-        long storedPosition = _stream.Position;
-        byte[]? array = null;
-        try
-        {
-            long offset = HeaderLength + RecordLength * index;
-            Span<byte> buffer = RecordLength < 256
-                ? stackalloc byte[RecordLength]
-                : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
-            _stream.Position = offset;
-            _stream.Read(buffer);
-            return ReadRecord(buffer);
-        }
-        finally
-        {
-            _stream.Position = storedPosition;
-            if (array is not null)
-                ArrayPool<byte>.Shared.Return(array);
-        }
-    }
-
-    private void SetRecordAt(int index, DbfRecord record)
-    {
-        Ensure.InRange(index, 0, RecordCount);
-        Ensure.NotNull(record);
-
-        long storedPosition = _stream.Position;
-        byte[]? array = null;
-        try
-        {
-            long offset = HeaderLength + RecordLength * index;
-            Span<byte> buffer = RecordLength < 256
-                ? stackalloc byte[RecordLength]
-                : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
-            WriteRecord(record, buffer);
-            _stream.Position = offset;
-            _stream.Write(buffer);
-            UpdateLastUpdated();
-        }
-        finally
-        {
-            _stream.Position = storedPosition;
-            if (array is not null)
-                ArrayPool<byte>.Shared.Return(array);
-        }
-    }
-
-    private DbfField GetFieldAt(int recordIndex, int fieldIndex)
-    {
-        Ensure.InRange(recordIndex, 0, RecordCount);
-        Ensure.InRange(fieldIndex, 0, RecordDescriptor.Count);
-
-        long storedPosition = _stream.Position;
-        try
-        {
-            long offset = HeaderLength + RecordLength * recordIndex;
-            // Skip to field.
-            for (int i = 0; i < fieldIndex; ++i)
-                offset += RecordDescriptor[i].Length;
-            _stream.Position = offset;
-            ref readonly var descriptor = ref RecordDescriptor[fieldIndex];
-            Span<byte> buffer = stackalloc byte[descriptor.Length]; // At most, 255 bytes.
-            _stream.Read(buffer);
-            return descriptor.Read(buffer, Encoding, DecimalSeparator);
-        }
-        finally
-        {
-            _stream.Position = storedPosition;
-        }
-    }
-
-    private DbfField GetFieldAt(int recordIndex, string fieldName) => GetFieldAt(recordIndex, RecordDescriptor.IndexOf(fieldName));
-
-    internal int ReadByte() => _stream.ReadByte();
-    #endregion
-
     /// <summary>
     /// Adds the specified record to the file.
     /// </summary>
@@ -440,7 +394,6 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     {
         Ensure.NotNull(record);
 
-        var storedPosition = 0;
         byte[]? array = null;
         try
         {
@@ -448,7 +401,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
                 ? stackalloc byte[RecordLength]
                 : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
             _stream.Position = HeaderLength + RecordLength * RecordCount;
-            WriteRecord(record, buffer);
+            RecordDescriptor.Write(record, buffer, Encoding, DecimalSeparator);
             _stream.Write(buffer);
             _stream.WriteByte(0x1A); // EOF.
             UpdateLastUpdated();
@@ -456,7 +409,6 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
         }
         finally
         {
-            _stream.Position = storedPosition;
             if (array is not null)
                 ArrayPool<byte>.Shared.Return(array);
         }
@@ -469,7 +421,6 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// <exception cref="InvalidOperationException"></exception>
     public void AddRange(IEnumerable<DbfRecord> records)
     {
-        var storedPosition = 0;
         byte[]? array = null;
         var count = 0;
         try
@@ -483,7 +434,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
                 if (record is null)
                     throw new InvalidOperationException($"{nameof(record)} is null");
 
-                WriteRecord(record, buffer);
+                RecordDescriptor.Write(record, buffer, Encoding, DecimalSeparator);
                 _stream.Write(buffer);
                 ++count;
             }
@@ -493,7 +444,6 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
         }
         finally
         {
-            _stream.Position = storedPosition;
             if (array is not null)
                 ArrayPool<byte>.Shared.Return(array);
         }
@@ -504,19 +454,11 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// </summary>
     public void Clear()
     {
-        var storedPosition = _stream.Position;
-        try
-        {
-            _stream.SetLength(HeaderLength);
-            _stream.Position = HeaderLength;
-            _stream.WriteByte(0x1A); // EOF.
-            RecordCount = 0;
-            UpdateLastUpdated();
-        }
-        finally
-        {
-            _stream.Position = storedPosition;
-        }
+        _stream.SetLength(HeaderLength);
+        _stream.Position = HeaderLength;
+        _stream.WriteByte(0x1A); // EOF.
+        RecordCount = 0;
+        UpdateLastUpdated();
     }
 
     /// <summary>
@@ -532,18 +474,10 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
         {
             for (int i = 0; i < RecordCount; ++i)
             {
-                long storedPosition = _stream.Position;
-                try
-                {
-                    long offset = HeaderLength + RecordLength * i;
-                    _stream.Position = offset;
-                    _stream.Read(buffer.AsSpan(0, RecordLength));
-                    yield return ReadRecord(buffer.AsSpan(0, RecordLength));
-                }
-                finally
-                {
-                    _stream.Position = storedPosition;
-                }
+                long offset = HeaderLength + RecordLength * i;
+                _stream.Position = offset;
+                _stream.Read(buffer.AsSpan(0, RecordLength));
+                yield return RecordDescriptor.Read(buffer.AsSpan(0, RecordLength), Encoding, DecimalSeparator);
             }
         }
         finally
@@ -585,7 +519,6 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
         Ensure.InRange(index, 0, RecordCount);
         Ensure.NotNull(record);
 
-        var storedPosition = 0;
         byte[]? array = null;
         try
         {
@@ -593,17 +526,13 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
                 ? stackalloc byte[RecordLength]
                 : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
             var offset = HeaderLength + RecordLength * index;
-            // TODO: Fix this.
-            // _stream.ShiftDataRight(offset, buffer.Length);
-            _stream.Position = offset;
-            WriteRecord(record, buffer);
-            _stream.Write(buffer);
+            RecordDescriptor.Write(record, buffer, Encoding, DecimalSeparator);
+            _stream.InsertRange(offset, buffer);
             UpdateLastUpdated();
             ++RecordCount;
         }
         finally
         {
-            _stream.Position = storedPosition;
             if (array is not null)
                 ArrayPool<byte>.Shared.Return(array);
         }
@@ -705,18 +634,10 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
         Ensure.GreaterThanOrEqualTo(index, 0);
         Ensure.LessThan(index + count, RecordCount);
 
-        var storedPosition = _stream.Position;
-        try
-        {
-            _stream.Position = HeaderLength + RecordLength * index;
-            for (int i = 0; i < count; ++i, _stream.Position += RecordLength)
-                _stream.WriteByte((byte)status);
-            UpdateLastUpdated();
-        }
-        finally
-        {
-            _stream.Position = storedPosition;
-        }
+        _stream.Position = HeaderLength + RecordLength * index;
+        for (int i = 0; i < count; ++i, _stream.Position += RecordLength)
+            _stream.WriteByte((byte)status);
+        UpdateLastUpdated();
     }
 
     /// <summary>
@@ -751,8 +672,7 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
         Ensure.GreaterThanOrEqualTo(index, 0);
         Ensure.LessThanOrEqualTo(index + count, RecordCount);
 
-        // TODO: Fix this.
-        //_stream.ShiftDataLeft(HeaderLength + RecordLength * index, RecordLength * count);
+        _stream.RemoveRange(HeaderLength + RecordLength * index, RecordLength * count);
         UpdateLastUpdated();
         RecordCount -= count;
     }
@@ -765,33 +685,25 @@ public sealed class Dbf : IDisposable, IList<DbfRecord>
     /// </returns>
     public int RemoveDeleted()
     {
-        var storedPosition = _stream.Position;
-        try
+        int removed = 0;
+        int index = -1, count = 0;
+        for (int i = RecordCount - 1; i >= 0; --i)
         {
-            int removed = 0;
-            int index = -1, count = 0;
-            for (int i = RecordCount - 1; i >= 0; --i)
+            _stream.Position = HeaderLength + RecordLength * i;
+            // If deleted set index and increase count.
+            if ((DbfRecord.Status)_stream.ReadByte() == DbfRecord.Status.Deleted)
             {
-                _stream.Position = HeaderLength + RecordLength * i;
-                // If deleted set index and increase count.
-                if ((DbfRecord.Status)_stream.ReadByte() == DbfRecord.Status.Deleted)
-                {
-                    index = i;
-                    ++count;
-                }
-                else if (index != -1) // Delete previous range?
-                {
-                    RemoveRange(index, count);
-                    removed += count;
-                    index = -1;
-                    count = 0;
-                }
+                index = i;
+                ++count;
             }
-            return removed;
+            else if (index != -1) // Delete previous range?
+            {
+                RemoveRange(index, count);
+                removed += count;
+                index = -1;
+                count = 0;
+            }
         }
-        finally
-        {
-            _stream.Position = storedPosition;
-        }
+        return removed;
     }
 }
