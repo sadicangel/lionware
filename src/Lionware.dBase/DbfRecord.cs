@@ -48,7 +48,7 @@ public readonly record struct DbfRecord : IEquatable<DbfRecord>
     /// <summary>
     /// Gets the number of <see cref="DbfField" /> elements.
     /// </summary>
-    public int Count => _fields.Length;
+    public int FieldCount => _fields.Length;
 
     /// <summary>
     /// Gets the <see cref="DbfField"/> at the specified index.
@@ -135,5 +135,5 @@ public readonly record struct DbfRecord : IEquatable<DbfRecord>
         }
     }
 
-    private string GetDebuggerDisplay() => $"{nameof(Count)} = {Count}";
+    private string GetDebuggerDisplay() => $"{nameof(FieldCount)} = {FieldCount}";
 }

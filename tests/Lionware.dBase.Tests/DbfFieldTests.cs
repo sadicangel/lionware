@@ -1,6 +1,6 @@
 using System.Reflection;
 
-namespace Lionware.dBase.Tests;
+namespace Lionware.dBase;
 
 public sealed class DbfFieldTests
 {

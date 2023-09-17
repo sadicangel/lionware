@@ -142,12 +142,12 @@ public readonly struct DbfRecordDescriptor : IEquatable<DbfRecordDescriptor>
     /// <returns></returns>
     public void Write(DbfRecord record, Span<byte> target, Encoding encoding, char decimalSeparator)
     {
-        if (Count != record.Count)
+        if (Count != record.FieldCount)
             throw new ArgumentException("Invalid record", nameof(record));
 
         target[0] = (byte)record.RecordStatus;
         target = target[1..];
-        for (int i = 0; i < record.Count; ++i)
+        for (int i = 0; i < record.FieldCount; ++i)
         {
             ref readonly var descriptor = ref _fieldDescriptors[i];
             ref readonly var field = ref record[i];

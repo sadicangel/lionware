@@ -38,6 +38,21 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     private readonly byte _inMdxFile;
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="DbfFieldDescriptor"/> struct.
+    /// </summary>
+    /// <param name="name">The name of the field.</param>
+    /// <param name="type">The type of the field.</param>
+    /// <param name="length">The length of the field in bytes.</param>
+    /// <param name="decimal">The number of characters allowed after the decimal separator.</param>
+    public DbfFieldDescriptor(string name, DbfFieldType type, byte length, byte @decimal)
+    {
+        NameString = name;
+        Type = type;
+        Length = length;
+        Decimal = @decimal;
+    }
+
+    /// <summary>
     /// Gets the field name in ASCII.
     /// </summary>
     public readonly ReadOnlySpan<byte> Name
@@ -62,7 +77,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <remarks>
     /// Only ASCII characters are supported.
     /// </remarks>
-    public readonly string NameString { get => Encoding.ASCII.GetString(Name); init => Name = Encoding.ASCII.GetBytes(NameString); }
+    public readonly string NameString { get => Encoding.ASCII.GetString(Name); init => Name = Encoding.ASCII.GetBytes(value); }
 
     /// <summary>
     /// Gets the type of the field.
@@ -251,50 +266,56 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
     /// <exception cref="InvalidEnumArgumentException"></exception>
-    public DbfField Read(in ReadOnlySpan<byte> source, Encoding encoding, char decimalSeparator)
+    public DbfField Read(ReadOnlySpan<byte> source, Encoding encoding, char decimalSeparator)
     {
+        source = source.Trim("\0 "u8);
+
+        if (source.Length == 0)
+            return Type is DbfFieldType.Character ? new(String.Empty, Length, Decimal) : new DbfField(Type, Length, Decimal);
+
         switch (Type)
         {
             case DbfFieldType.Character:
-                ReadOnlySpan<byte> @string = source.Trim("\0 "u8);
-                return new(@string.Length > 0 ? encoding.GetString(@string) : String.Empty);
+                return new(encoding.GetString(source), Length, Decimal);
 
             case DbfFieldType.Ole:
             case DbfFieldType.Memo:
             case DbfFieldType.Binary:
-                return new(encoding.GetString(source));
+                return new(encoding.GetString(source), Length, Decimal);
 
             case DbfFieldType.Numeric when Decimal is 0:
-                return new(Parse<long>(source, NumberStyles.Integer, encoding));
+                ReadOnlySpan<byte> @long = source.Trim("\0 "u8);
+
+                return new(Parse<long>(source, NumberStyles.Integer, encoding), Length, Decimal);
 
             case DbfFieldType.Numeric:
             case DbfFieldType.Float:
-                return new(Parse<double>(source, NumberStyles.Float, encoding, decimalSeparator));
+                ReadOnlySpan<byte> @double = source.Trim("\0 "u8);
+                return new(Parse<double>(source, NumberStyles.Float, encoding, decimalSeparator), Length, Decimal);
 
             case DbfFieldType.Int32:
             case DbfFieldType.AutoIncrement:
-                return new(MemoryMarshal.Read<int>(source));
+                return new(MemoryMarshal.Read<int>(source), Length, Decimal);
 
             case DbfFieldType.Double:
-                return new(MemoryMarshal.Read<double>(source));
+                return new(MemoryMarshal.Read<double>(source), Length, Decimal);
 
             case DbfFieldType.Date:
                 Span<char> date = stackalloc char[8];
                 encoding.GetChars(source[..8], date);
-                date = date.Trim("\0 ");
-                return date.Length > 0 ? new DbfField(DateTime.ParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture)) : DbfField.Null;
+                return new DbfField(DateTime.ParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture));
 
             case DbfFieldType.Timestamp:
-                return new(DateTime.FromOADate(MemoryMarshal.Read<int>(source[..4]) - JulianCalendarOffset) + TimeSpan.FromMilliseconds(MemoryMarshal.Read<int>(source.Slice(4, 4))));
+                return new(DateTime.FromOADate(MemoryMarshal.Read<int>(source[..4]) - JulianCalendarOffset) + TimeSpan.FromMilliseconds(MemoryMarshal.Read<int>(source.Slice(4, 4))), Length, Decimal);
 
             case DbfFieldType.Logical:
                 char logical = '\0';
                 encoding.GetChars(source[..1], MemoryMarshal.CreateSpan(ref logical, 1));
                 return Char.ToUpperInvariant(logical) switch
                 {
-                    '?' or ' ' => DbfField.Null,
-                    'T' or 'Y' or '1' => new DbfField(true),
-                    'F' or 'N' or '0' => new DbfField(false),
+                    '?' or ' ' => new DbfField(DbfFieldType.Logical, Length, Decimal),
+                    'T' or 'Y' or '1' => new DbfField(true, Length, Decimal),
+                    'F' or 'N' or '0' => new DbfField(false, Length, Decimal),
                     _ => throw new InvalidOperationException($"Invalid {nameof(DbfFieldType.Logical)} value '{encoding.GetString(source)}'"),
                 };
 

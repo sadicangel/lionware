@@ -147,6 +147,39 @@ public sealed class Dbf : IDisposable, IEnumerable<DbfRecord>
     public int Version { get => _version & 0x07; init => _version = (byte)(_version & 0xF8 | value & 0x07); }
 
     /// <summary>
+    /// Gets the dBase version description.
+    /// </summary>
+    public string VersionDescription
+    {
+        get => Version switch
+        {
+            0x02 => "FoxPro",
+            0x03 => "dBase III without memo file",
+            0x04 => "dBase IV without memo file",
+            0x05 => "dBase V without memo file",
+            0x07 => "Visual Objects 1.x",
+            0x30 => "Visual FoxPro",
+            0x31 => "Visual FoxPro with AutoIncrement field",
+            0x43 => "dBASE IV SQL table files, no memo",
+            0x63 => "dBASE IV SQL system files, no memo",
+            0x7b => "dBase IV with memo file",
+            0x83 => "dBase III with memo file",
+            0x87 => "Visual Objects 1.x with memo file",
+            0x8b => "dBase IV with memo file",
+            0x8e => "dBase IV with SQL table",
+            0xcb => "dBASE IV SQL table files, with memo",
+            0xf5 => "FoxPro with memo file",
+            0xfb => "FoxPro without memo file",
+            _ => "Unknown",
+        };
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether this instance is a FoxPro format.
+    /// </summary>
+    public bool IsFoxPro { get => Version is 0x30 or 0x31 or 0xf5 or 0xfb; }
+
+    /// <summary>
     /// Gets a value indicating whether this instance has a DOS memo file.
     /// </summary>
     public bool HasDosMemo { get => (_version & 0x08) != 0; init => _version = (byte)(_version & 0xF7 | (value ? 0x08 : 0x00)); }
