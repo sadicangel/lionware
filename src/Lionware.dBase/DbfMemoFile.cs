@@ -87,7 +87,7 @@ public abstract class DbfMemoFile : IDisposable
 
         memoFile = dbf.Version switch
         {
-            0x83 => new DbfMemoFile03(new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite)),
+            0x83 => new DbfMemoFileV3(new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite)),
             _ => throw new NotSupportedException($"Memo file for {dbf.VersionDescription}")
         };
 
@@ -99,7 +99,7 @@ public abstract class DbfMemoFile : IDisposable
         var fileName = Path.ChangeExtension(dbf.FileName, ".dbt");
         return dbf.Version switch
         {
-            0x83 => new DbfMemoFile03(CreateStream(fileName)),
+            0x83 => new DbfMemoFileV3(CreateStream(fileName)),
             _ => throw new NotSupportedException($"Memo file for {dbf.VersionDescription}")
         };
 

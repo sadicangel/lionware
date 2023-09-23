@@ -3,9 +3,9 @@ using System.Text;
 
 namespace Lionware.dBase;
 
-internal sealed class DbfMemoFile03 : DbfMemoFile
+internal sealed class DbfMemoFileV3 : DbfMemoFile
 {
-    internal DbfMemoFile03(Stream stream) : base(stream) { }
+    internal DbfMemoFileV3(Stream stream) : base(stream) { }
 
     public override string this[int index]
     {
