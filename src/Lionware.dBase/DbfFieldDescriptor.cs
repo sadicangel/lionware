@@ -277,7 +277,18 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 {
 
                     source = source.Trim("\0 "u8);
-                    return source.Length > 0 ? new(context.Encoding.GetString(source), length) : new(String.Empty, length);
+                    return source.Length > 0 ? new(context.Encoding.GetString(source), type, length) : new(type, length, @decimal);
+                };
+
+            case DbfFieldType.Ole when Length is 4:
+            case DbfFieldType.Memo when Length is 4:
+            case DbfFieldType.Binary when Length is 4:
+                return (source, context) =>
+                {
+                    if (context.MemoFile is null)
+                        return new DbfField(type, length, @decimal);
+
+                    return new DbfField(context.MemoFile[MemoryMarshal.Read<int>(source)], type, length, @decimal);
                 };
 
             case DbfFieldType.Ole:
@@ -286,7 +297,15 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 return (source, context) =>
                 {
                     source = source.Trim("\0 "u8);
-                    return source.Length > 0 ? new(context.Encoding.GetString(source), length) : new DbfField(type, length, @decimal);
+                    if (context.MemoFile is null || source.Length == 0)
+                        return new DbfField(type, length, @decimal);
+
+                    Span<char> chars = stackalloc char[context.Encoding.GetMaxCharCount(source.Length)];
+                    context.Encoding.GetChars(source, chars);
+                    if (!int.TryParse(chars, out var index))
+                        return new DbfField(type, length, @decimal);
+
+                    return new DbfField(context.MemoFile[index], type, length, @decimal);
                 };
 
             case DbfFieldType.Numeric when Decimal is 0:
@@ -385,9 +404,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         switch (Type)
         {
             case DbfFieldType.Character:
-            case DbfFieldType.Memo:
-            case DbfFieldType.Binary:
-            case DbfFieldType.Ole:
                 return (in DbfField field, Span<byte> target, IDbfContext context) =>
                 {
                     if (IsValidAndNotNull(in field, target))
@@ -398,15 +414,39 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                     }
                 };
 
+            case DbfFieldType.Ole when Length is 4:
+            case DbfFieldType.Memo when Length is 4:
+            case DbfFieldType.Binary when Length is 4:
+                return (in DbfField field, Span<byte> target, IDbfContext context) =>
+                {
+                    if (context.MemoFile is not null && IsValidAndNotNull(in field, target))
+                    {
+                        var index = context.MemoFile.Append(field.GetString());
+                        MemoryMarshal.Write(target, ref index);
+                    }
+                };
+
+            case DbfFieldType.Memo:
+            case DbfFieldType.Binary:
+            case DbfFieldType.Ole:
+                return (in DbfField field, Span<byte> target, IDbfContext context) =>
+                {
+                    if (context.MemoFile is not null && IsValidAndNotNull(in field, target))
+                    {
+                        var index = context.MemoFile.Append(field.GetString());
+                        Span<char> chars = stackalloc char[10];
+                        var result = index.TryFormat(chars, out var charsWritten, default, CultureInfo.InvariantCulture);
+                        Debug.Assert(result);
+                        chars = chars[..charsWritten];
+                        context.Encoding.GetBytes(chars, target[^chars.Length..]);
+                    }
+                };
+
             case DbfFieldType.Numeric when Decimal == 0:
                 return (in DbfField field, Span<byte> target, IDbfContext context) =>
                 {
                     if (IsValidAndNotNull(in field, target))
-                    {
-                        Span<char> @long = stackalloc char[20];
-                        Format<long>(in field, length, @long);
-                        context.Encoding.GetBytes(@long, target);
-                    }
+                        FormatInt<long>(in field, target, maxLengthToFormatT: 20, context);
                 };
 
             case DbfFieldType.Numeric:
@@ -414,30 +454,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 return (in DbfField field, Span<byte> target, IDbfContext context) =>
                 {
                     if (IsValidAndNotNull(in field, target))
-                    {
-                        Span<char> @double = stackalloc char[24];
-                        Format<double>(in field, length, @double);
-                        var idx = @double.IndexOf(context.DecimalSeparator);
-                        // No decimal separator.
-                        if (idx < 0)
-                        {
-                            context.Encoding.GetBytes(@double, target);
-                        }
-                        else
-                        {
-                            // Whole part.
-                            var whole = @double[..idx];
-                            whole = whole[..Math.Min(length - @decimal - 1, whole.Length)];
-                            // Decimal part.
-                            var fract = @double[(idx + 1)..];
-                            fract = fract[..Math.Min(@decimal, fract.Length)];
-
-                            context.Encoding.GetBytes(fract, target);
-                            context.Encoding.GetBytes(whole, target[fract.Length..]);
-                            var decimalSeparator = context.DecimalSeparator;
-                            context.Encoding.GetBytes(MemoryMarshal.CreateReadOnlySpan(ref decimalSeparator, 1), target.Slice(idx, 1));
-                        }
-                    }
+                        FormatFloat<double>(in field, target, maxLengthToFormatT: 32, context, @decimal);
                 };
 
             case DbfFieldType.Int32:
@@ -467,12 +484,10 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                     if (IsValidAndNotNull(in field, target))
                     {
                         var date = field.ReadInlineValue<DateOnly>();
-                        for (int i = 0, y = date.Year; i < 4; ++i, y /= 10)
-                            target[i] = (byte)(y % 10 + '0');
-                        for (int i = 4, m = date.Month; i < 6; ++i, m /= 10)
-                            target[i] = (byte)((m & 10) + '0');
-                        for (int i = 6, d = date.Day; i < 8; ++i, d /= 10)
-                            target[i] = (byte)((d & 10) + '0');
+                        Span<char> chars = stackalloc char[8];
+                        var result = date.TryFormat(chars, out _, "yyyyMMdd", CultureInfo.InvariantCulture);
+                        Debug.Assert(result);
+                        context.Encoding.GetBytes(chars, target);
                     }
                 };
 
@@ -508,13 +523,56 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 throw new InvalidEnumArgumentException(nameof(Type), (int)Type, typeof(DbfFieldType));
         }
 
-        static void Format<T>(in DbfField field, int maxLength, Span<char> target) where T : struct, INumberBase<T>
+        static void FormatInt<T>(in DbfField field, Span<byte> target, int maxLengthToFormatT, IDbfContext context) where T : struct, IBinaryInteger<T>
         {
+            Span<char> buffer = stackalloc char[maxLengthToFormatT];
             var value = field.ReadInlineValue<T>();
-            var result = value.TryFormat(target, out var charsWritten, default, CultureInfo.InvariantCulture);
+            var result = value.TryFormat(buffer, out var charsWritten, default, CultureInfo.InvariantCulture);
             Debug.Assert(result);
-            // Truncate if needed.
-            target = target[..Math.Min(charsWritten, maxLength)];
+            if (charsWritten < target.Length)
+            {
+                buffer = buffer[..Math.Min(target.Length, buffer.Length)];
+                var shift = target.Length - charsWritten;
+                for (int i = target.Length - 1; i >= shift; --i)
+                    buffer[i] = buffer[i - shift];
+                buffer[..shift].Fill(' ');
+            }
+            else if (charsWritten > target.Length)
+            {
+                buffer = buffer[..target.Length];
+            }
+
+            context.Encoding.GetBytes(buffer, target);
+        }
+
+        static void FormatFloat<T>(in DbfField field, Span<byte> target, int maxLengthToFormatT, IDbfContext context, int decimalSpaces) where T : struct, IFloatingPoint<T>
+        {
+            Span<char> buffer = stackalloc char[maxLengthToFormatT];
+            Span<char> format = stackalloc char[maxLengthToFormatT];
+            format.Fill('#');
+            if (decimalSpaces > 0)
+            {
+                format[^decimalSpaces..].Fill('0');
+                format[^(decimalSpaces + 1)] = '.';
+            }
+            var value = field.ReadInlineValue<T>();
+            var result = value.TryFormat(buffer, out var charsWritten, format, CultureInfo.InvariantCulture);
+            Debug.Assert(result);
+            buffer[buffer.IndexOf('.')] = context.DecimalSeparator;
+            if (charsWritten < target.Length)
+            {
+                buffer = buffer[..Math.Min(target.Length, buffer.Length)];
+                var shift = target.Length - charsWritten;
+                for (int i = target.Length - 1; i >= shift; --i)
+                    buffer[i] = buffer[i - shift];
+                buffer[..shift].Fill(' ');
+            }
+            else if (charsWritten > target.Length)
+            {
+                buffer = buffer[^target.Length..];
+            }
+
+            context.Encoding.GetBytes(buffer, target);
         }
     }
 

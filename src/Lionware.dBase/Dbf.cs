@@ -20,9 +20,6 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     private readonly Stream _stream;
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private bool _disposedValue;
-
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private readonly byte _version = 3;
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
@@ -39,20 +36,15 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     /// </summary>
     /// <param name="fileName">Name of the file to create.</param>
     public Dbf(string fileName)
-        : this(new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite)) { }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Dbf"/> class from existing data on a stream.
-    /// </summary>
-    /// <param name="stream">The stream to write to.</param>
-    public Dbf(Stream stream)
     {
-        Ensure.NotNull(stream);
+        Ensure.NotNullOrEmpty(fileName);
 
-        _stream = stream;
+        FileName = fileName;
+
+        _stream = new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite);
 
         // Read the metadata.
-        using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
+        using var reader = new BinaryReader(_stream, Encoding.ASCII, leaveOpen: true);
         _version = reader.ReadByte();
         LastUpdate = new DateOnly(year: 1900 + reader.ReadByte(), month: reader.ReadByte(), day: reader.ReadByte());
         RecordCount = reader.ReadInt32();
@@ -80,6 +72,9 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
             throw new InvalidOperationException("Invalid record length");
 
         _stream.Position = 0;
+
+        if (HasDbtMemo && DbfMemoFile.TryOpen(this, out var memoFile))
+            MemoFile = memoFile;
     }
 
     /// <summary>
@@ -88,23 +83,20 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     /// <param name="fileName">Name of the file to create.</param>
     /// <param name="recordDescriptor">The record descriptor.</param>
     public Dbf(string fileName, DbfRecordDescriptor recordDescriptor)
-        : this(new FileStream(fileName, FileMode.CreateNew, FileAccess.ReadWrite), recordDescriptor) { }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Dbf"/> class on a new stream.
-    /// </summary>
-    /// <param name="stream">The stream to write to.</param>
-    /// <param name="recordDescriptor">The record descriptor.</param>
-    public Dbf(Stream stream, DbfRecordDescriptor recordDescriptor)
     {
-        Ensure.NotNull(stream);
-        Ensure.NotNull(recordDescriptor);
+        Ensure.NotNullOrEmpty(fileName);
 
-        _stream = stream;
+        FileName = fileName;
+
+        _stream = new FileStream(fileName, FileMode.CreateNew, FileAccess.ReadWrite);
         _recordDescriptor = recordDescriptor;
 
+        _version = 0x03;
+        if (recordDescriptor.FieldDescriptors.Any(f => f.Type is DbfFieldType.Binary or DbfFieldType.Ole or DbfFieldType.Memo))
+            _version |= 0x80;
+
         // Write the metadata.
-        using var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true);
+        using var writer = new BinaryWriter(_stream, Encoding.ASCII, leaveOpen: true);
         writer.Write(_version);
         writer.Write((byte)(LastUpdate.Year - 1900));
         writer.Write((byte)LastUpdate.Month);
@@ -129,6 +121,9 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
         writer.Write((byte)EofByte);
 
         _stream.Position = 0;
+
+        if (HasDbtMemo)
+            MemoFile = DbfMemoFile.Create(this);
     }
 
     /// <summary>
@@ -142,16 +137,21 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     internal long Position { get => _stream.Position; set => _stream.Position = value; }
 
     /// <summary>
+    /// Gets the file name of this <see cref="Dbf"/>.
+    /// </summary>
+    public string FileName { get; }
+
+    /// <summary>
     /// Gets the dBase version number.
     /// </summary>
-    public int Version { get => _version & 0x07; init => _version = (byte)(_version & 0xF8 | value & 0x07); }
+    public int Version { get => _version/* & 0x07; init => _version = (byte)(_version & 0xF8 | value & 0x07)*/; }
 
     /// <summary>
     /// Gets the dBase version description.
     /// </summary>
     public string VersionDescription
     {
-        get => Version switch
+        get => _version switch
         {
             0x02 => "FoxPro",
             0x03 => "dBase III without memo file",
@@ -254,6 +254,11 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     /// Gets the record descriptor.
     /// </summary>
     public ref readonly DbfRecordDescriptor RecordDescriptor { get => ref _recordDescriptor; }
+
+    /// <summary>
+    /// Gets the memo file associated with this DBF.
+    /// </summary>
+    public DbfMemoFile? MemoFile { get; }
 
     /// <summary>
     /// Gets the <see cref="DbfRecord" /> at the specified index.
@@ -374,37 +379,18 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     /// pointing to the newly created file.
     /// </summary>
     /// <param name="fileName">The name of the new file to create.</param>
-    public Dbf Clone(string fileName) => Clone(new FileStream(fileName, FileMode.CreateNew, FileAccess.ReadWrite));
-
-    /// <summary>
-    /// Copies all data to another file and then returns a new instance of <see cref="Dbf" />
-    /// pointing to the newly created file.
-    /// </summary>
-    /// <param name="stream">The stream to copy to.</param>
-    /// <returns></returns>
-    public Dbf Clone(Stream stream)
+    public Dbf Clone(string fileName)
     {
-        _stream.CopyTo(stream);
-        return new Dbf(stream);
-    }
-
-    private void Dispose(bool disposing)
-    {
-        if (!_disposedValue)
-        {
-            if (disposing)
-                _stream.Dispose();
-
-            _disposedValue = true;
-        }
+        using (var stream = new FileStream(fileName, FileMode.CreateNew, FileAccess.ReadWrite))
+            _stream.CopyTo(stream);
+        return new Dbf(fileName);
     }
 
     /// <inheritdoc cref="IDisposable.Dispose" />
     public void Dispose()
     {
-        // Do not change this code. Put clean up code in 'Dispose(bool disposing)' method
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
+        _stream.Dispose();
+        MemoFile?.Dispose();
     }
 
     private void UpdateLastUpdated()
@@ -725,5 +711,16 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
             }
         }
         return removed;
+    }
+}
+
+file static class SpanExtensions
+{
+    public static bool Any<T>(this ReadOnlySpan<T> span, Func<T, bool> predicate)
+    {
+        for (int i = 0; i < span.Length; ++i)
+            if (predicate(span[i]))
+                return true;
+        return false;
     }
 }

@@ -8,6 +8,7 @@ public sealed class DbfFieldDescriptorTests
     {
         public Encoding Encoding { get => Encoding.ASCII; }
         public char DecimalSeparator { get => '.'; }
+        public DbfMemoFile? MemoFile { get; }
     }
 
     private static readonly IDbfContext DbfContext = new DbfContextImpl();

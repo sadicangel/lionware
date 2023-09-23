@@ -1,14 +1,14 @@
 ﻿using System.Diagnostics;
 
 namespace Lionware.dBase;
-public sealed class Dbf03Tests : DbfTests, IDisposable
+public sealed class Dbf83Tests : DbfTests, IDisposable
 {
-    public Dbf03Tests() : base("Resources/03.dbf") { }
+    public Dbf83Tests() : base("Resources/83.dbf") { }
 
     [Fact]
     public void Dbf_Version_IsCorrect()
     {
-        Assert.Equal(3, ReadOnlyDbf.Version);
+        Assert.Equal(0x83, ReadOnlyDbf.Version);
     }
 
     [Fact]
@@ -20,7 +20,7 @@ public sealed class Dbf03Tests : DbfTests, IDisposable
     [Fact]
     public void Dbf_HasDbtMemo_IsCorrect()
     {
-        Assert.False(ReadOnlyDbf.HasDbtMemo);
+        Assert.True(ReadOnlyDbf.HasDbtMemo);
     }
 
     [Fact]
@@ -32,13 +32,13 @@ public sealed class Dbf03Tests : DbfTests, IDisposable
     [Fact]
     public void Dbf_RecordCount_IsCorrect()
     {
-        Assert.Equal(14, ReadOnlyDbf.RecordCount);
+        Assert.Equal(67, ReadOnlyDbf.RecordCount);
     }
 
     [Fact]
     public void Dbf_FieldCount_IsCorrect()
     {
-        Assert.Equal(31, ReadOnlyDbf.RecordDescriptor.Count);
+        Assert.Equal(15, ReadOnlyDbf.RecordDescriptor.Count);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public sealed class Dbf03Tests : DbfTests, IDisposable
     }
 
     [Fact]
-    public void Dbf_Read_RecordValues_AreValid()
+    public void Dbf_RecordValues_AreValid()
     {
         for (int i = 0; i < ReadOnlyDbf.RecordCount; i++)
         {
@@ -67,7 +67,7 @@ public sealed class Dbf03Tests : DbfTests, IDisposable
     [Fact]
     public void Dbf_Write_RecordValues_AreValid() => WithTempDirectory(dir =>
     {
-        var fileName = Path.Combine(dir, "03.dbf");
+        var fileName = Path.Combine(dir, "83.dbf");
         using var dbf = new Dbf(fileName, ReadOnlySchema);
         foreach (var csvRecord in ReadOnlyValues)
         {

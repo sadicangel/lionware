@@ -16,4 +16,9 @@ internal interface IDbfContext
     /// Gets the decimal separator character to use for decimal numbers.
     /// </summary>
     char DecimalSeparator { get; }
+
+    /// <summary>
+    /// Gets the associated memo file.
+    /// </summary>
+    DbfMemoFile? MemoFile { get; }
 }

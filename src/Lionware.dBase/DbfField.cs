@@ -217,29 +217,19 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// Initializes a new instance of the <see cref="DbfField" /> struct.
     /// </summary>
     /// <param name="value">The field value.</param>
-    public DbfField(string? value) : this(value: value, length: (byte)Math.Min(254, value?.Length ?? 0), @decimal: 0) { }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
+    /// <param name="type">The type of the field. Valid values are <see cref="DbfFieldType.Character"/>,
+    /// <see cref="DbfFieldType.Binary"/>, <see cref="DbfFieldType.Ole"/> or <see cref="DbfFieldType.Memo"/></param>
     /// <param name="length">The number of characters the field should have when stored.</param>
     /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(string? value, byte length, byte @decimal = 0)
+    public DbfField(string? value, DbfFieldType type = DbfFieldType.Character, byte length = 20, byte @decimal = 0)
     {
+        if (type is not DbfFieldType.Character and not DbfFieldType.Binary and not DbfFieldType.Ole and not DbfFieldType.Memo)
+            throw new ArgumentOutOfRangeException(nameof(type));
+
         _inlineSize = 0;
         _referenceValue = value;
-        if (value is not null)
-        {
-            _clrType = ClrType.String;
-            if (value.Length > 254)
-                _referenceValue = value[..254];
-        }
-        else
-        {
-            _clrType = ClrType.Empty;
-        }
-        _dbfType = DbfFieldType.Character;
+        _clrType = value is not null ? ClrType.String : ClrType.Empty;
+        _dbfType = type;
         _length = length;
         _decimal = @decimal;
     }
@@ -553,9 +543,9 @@ public readonly struct DbfField : IEquatable<DbfField>
             DbfFieldType.Date => GetDateOnly().ToString("yyyyMMdd"),
             DbfFieldType.Timestamp => GetDateTime().ToString("o"),
             DbfFieldType.Logical => GetBoolean() ? "T" : "F",
-            DbfFieldType.Memo => throw new NotImplementedException(),
-            DbfFieldType.Binary => throw new NotImplementedException(),
-            DbfFieldType.Ole => throw new NotImplementedException(),
+            DbfFieldType.Memo or
+            DbfFieldType.Binary or
+            DbfFieldType.Ole => _referenceValue ?? String.Empty,
             _ => throw new NotImplementedException(),
         };
     }
@@ -714,7 +704,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     public static explicit operator DateOnly?(DbfField value) => value.ConvertToNullable<DateOnly>();
 
     /// <summary>Performs an implicit conversion from <see cref="string"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(string? value) => value is null ? new() : new(value);
+    public static implicit operator DbfField(string? value) => value is null ? new(DbfFieldType.Character, 0, 0) : new(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="string" />.</summary>
     public static explicit operator string?(DbfField value) => value._referenceValue;
 }
