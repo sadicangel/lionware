@@ -245,7 +245,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
             case DbfFieldType.Character:
                 return (source, context) =>
                 {
-
                     source = source.Trim("\0 "u8);
                     return source.Length > 0 ? DbfField.Character(context.Encoding.GetString(source), length) : DbfField.Null(type, length, @decimal);
                 };

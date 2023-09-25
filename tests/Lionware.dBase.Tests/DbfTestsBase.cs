@@ -49,7 +49,7 @@ public abstract class DbfTestsBase : IDisposable
                 DbfFieldType.Logical => str => str ?? String.Empty,
                 DbfFieldType.Memo or
                 DbfFieldType.Binary or
-                DbfFieldType.Ole => str => str ?? String.Empty,
+                DbfFieldType.Ole => str => String.IsNullOrEmpty(str) ? String.Empty : OperatingSystem.IsWindows() ? str : str.Replace(Environment.NewLine, "\r\n"),
                 _ => throw new NotImplementedException(),
             };
         }
