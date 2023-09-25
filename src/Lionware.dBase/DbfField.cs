@@ -50,188 +50,37 @@ public readonly struct DbfField : IEquatable<DbfField>
     // reference to object in heap (4 or 8 bytes)
     [FieldOffset(16)] private readonly string? _referenceValue;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="type">The type of the field.</param>
-    /// <param name="length">The number of characters the field should have when stored.</param>
-    /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(DbfFieldType type, byte length, byte @decimal)
+    private DbfField(string? value, DbfFieldType dbfType, byte length, byte @decimal)
     {
-        _inlineSize = sizeof(bool);
-        _clrType = ClrType.Empty;
-        _dbfType = type;
-        _isInline = true;
-        _length = length;
-        _decimal = @decimal;
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
-    public DbfField(bool value)
-    {
-        _inlineSize = sizeof(bool);
-        _clrType = ClrType.Boolean;
-        _dbfType = DbfFieldType.Logical;
-        _isInline = true;
-        _length = 1;
-        _decimal = 0;
-        WriteInlineValue(value);
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
-    /// <param name="length">The number of characters the field should have when stored.</param>
-    /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(byte value, byte length = 3, byte @decimal = 0)
-    {
-        _inlineSize = sizeof(byte);
-        _clrType = ClrType.Byte;
-        _dbfType = DbfFieldType.Numeric;
-        _isInline = true;
-        _length = length;
-        _decimal = @decimal;
-        WriteInlineValue(value);
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
-    /// <param name="length">The number of characters the field should have when stored.</param>
-    /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(short value, byte length = 5, byte @decimal = 0)
-    {
-        _inlineSize = sizeof(short);
-        _clrType = ClrType.Int16;
-        _dbfType = DbfFieldType.Numeric;
-        _isInline = true;
-        _length = length;
-        _decimal = @decimal;
-        WriteInlineValue(value);
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
-    /// <param name="length">The number of characters the field should have when stored.</param>
-    /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(int value, byte length = 10, byte @decimal = 0)
-    {
-        _inlineSize = sizeof(int);
-        _clrType = ClrType.Int32;
-        _dbfType = DbfFieldType.Numeric;
-        _isInline = true;
-        _length = length;
-        _decimal = @decimal;
-        WriteInlineValue(value);
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
-    /// <param name="length">The number of characters the field should have when stored.</param>
-    /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(long value, byte length = 19, byte @decimal = 0)
-    {
-        _inlineSize = sizeof(long);
-        _clrType = ClrType.Int64;
-        _dbfType = DbfFieldType.Numeric;
-        _isInline = true;
-        _length = length;
-        _decimal = @decimal;
-        WriteInlineValue(value);
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
-    /// <param name="length">The number of characters the field should have when stored.</param>
-    /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(float value, byte length = 14, byte @decimal = 7)
-    {
-        _inlineSize = sizeof(float);
-        _clrType = ClrType.Single;
-        _dbfType = DbfFieldType.Numeric;
-        _isInline = true;
-        _length = length;
-        _decimal = @decimal;
-        WriteInlineValue(value);
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
-    /// <param name="length">The number of characters the field should have when stored.</param>
-    /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(double value, byte length = 30, byte @decimal = 15)
-    {
-        _inlineSize = sizeof(double);
-        _clrType = ClrType.Double;
-        _dbfType = DbfFieldType.Numeric;
-        _isInline = true;
-        _length = length;
-        _decimal = @decimal;
-        WriteInlineValue(value);
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
-    public DbfField(DateTime value)
-    {
-        _inlineSize = (byte)Unsafe.SizeOf<DateTime>();
-        _clrType = ClrType.DateTime;
-        _dbfType = DbfFieldType.Timestamp;
-        _isInline = true;
-        _length = 8;
-        _decimal = 0;
-        WriteInlineValue(value);
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
-    public DbfField(DateOnly value)
-    {
-        _inlineSize = (byte)Unsafe.SizeOf<DateOnly>();
-        _clrType = ClrType.DateOnly;
-        _dbfType = DbfFieldType.Date;
-        _isInline = true;
-        _length = 8;
-        _decimal = 0;
-        WriteInlineValue(value);
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbfField" /> struct.
-    /// </summary>
-    /// <param name="value">The field value.</param>
-    /// <param name="type">The type of the field. Valid values are <see cref="DbfFieldType.Character"/>,
-    /// <see cref="DbfFieldType.Binary"/>, <see cref="DbfFieldType.Ole"/> or <see cref="DbfFieldType.Memo"/></param>
-    /// <param name="length">The number of characters the field should have when stored.</param>
-    /// <param name="decimal">The number of decimal characters the field should have when stored.</param>
-    public DbfField(string? value, DbfFieldType type = DbfFieldType.Character, byte length = 20, byte @decimal = 0)
-    {
-        if (type is not DbfFieldType.Character and not DbfFieldType.Binary and not DbfFieldType.Ole and not DbfFieldType.Memo)
-            throw new ArgumentOutOfRangeException(nameof(type));
-
-        _inlineSize = 0;
-        _referenceValue = value;
         _clrType = value is not null ? ClrType.String : ClrType.Empty;
-        _dbfType = type;
+        _dbfType = dbfType;
+        _isInline = false;
+        _inlineSize = 0;
         _length = length;
         _decimal = @decimal;
+        _reserved = 0;
+        _inlineValue = 0;
+        _referenceValue = value;
+    }
+
+    private DbfField(ClrType clrType, DbfFieldType dbfType, byte inlineSize, byte length, byte @decimal)
+    {
+        _clrType = clrType;
+        _dbfType = dbfType;
+        _isInline = true;
+        _inlineSize = inlineSize;
+        _length = length;
+        _decimal = @decimal;
+        _reserved = 0;
+        _inlineValue = 0;
+        _referenceValue = null;
+    }
+
+    private static DbfField CreateInline<T>(T value, ClrType clrType, DbfFieldType dbfType, byte length, byte @decimal) where T : struct
+    {
+        var field = new DbfField(clrType, dbfType, (byte)Unsafe.SizeOf<T>(), length, @decimal);
+        MemoryMarshal.Write(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(field._inlineValue), field._inlineSize), ref value);
+        return field;
     }
 
     /// <summary>
@@ -279,6 +128,201 @@ public readonly struct DbfField : IEquatable<DbfField>
     public T? GetValue<T>() => (T?)Value;
 
     private void ThrowInvalidType(ClrType expectedType) => throw new InvalidOperationException($"Cannot convert value to {expectedType}. Field type is {_clrType}");
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Character" />.
+    /// </summary>
+    /// <param name="type">The type of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <param name="decimal">The number of decimal digits.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores an empty value.
+    /// </returns>
+    public static DbfField Null(DbfFieldType type, byte length = 10, byte @decimal = 0) => new(value: null, type, length, @decimal);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Character" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Character(string? value, byte length = 10) => new(value, DbfFieldType.Character, length, @decimal: 0);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Memo" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Memo(string? value, byte length = 10) => new(value, DbfFieldType.Memo, length, @decimal: 0);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Binary" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Binary(string? value, byte length = 10) => new(value, DbfFieldType.Binary, length, @decimal: 0);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Ole" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Ole(string? value, byte length = 10) => new(value, DbfFieldType.Ole, length, @decimal: 0);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Date" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Date(DateOnly value) => CreateInline(value, ClrType.DateOnly, DbfFieldType.Date, length: 0, @decimal: 0);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Float" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <param name="decimal">The number of decimal digits.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    /// <remarks>Identical to <see cref="DbfFieldType.Numeric" />; maintained for compatibility.</remarks>
+    public static DbfField Float(float value, byte length = 10, byte @decimal = 0) => CreateInline(value, ClrType.Single, DbfFieldType.Float, length, @decimal);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Float" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <param name="decimal">The number of decimal digits.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    /// <remarks>Identical to <see cref="DbfFieldType.Numeric" />; maintained for compatibility.</remarks>
+    public static DbfField Float(double value, byte length = 10, byte @decimal = 0) => CreateInline(value, ClrType.Double, DbfFieldType.Float, length, @decimal);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <param name="decimal">The number of decimal digits.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Numeric(byte value, byte length = 3, byte @decimal = 0) => CreateInline(value, ClrType.Byte, DbfFieldType.Numeric, length, @decimal);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <param name="decimal">The number of decimal digits.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Numeric(short value, byte length = 5, byte @decimal = 0) => CreateInline(value, ClrType.Int16, DbfFieldType.Numeric, length, @decimal);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <param name="decimal">The number of decimal digits.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Numeric(int value, byte length = 10, byte @decimal = 0) => CreateInline(value, ClrType.Int32, DbfFieldType.Numeric, length, @decimal);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <param name="decimal">The number of decimal digits.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Numeric(long value, byte length = 20, byte @decimal = 0) => CreateInline(value, ClrType.Int64, DbfFieldType.Numeric, length, @decimal);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <param name="decimal">The number of decimal digits.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Numeric(float value, byte length = 14, byte @decimal = 7) => CreateInline(value, ClrType.Single, DbfFieldType.Numeric, length, @decimal);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <param name="length">The length of the field (number of ASCII characters).</param>
+    /// <param name="decimal">The number of decimal digits.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Numeric(double value, byte length = 20, byte @decimal = 10) => CreateInline(value, ClrType.Double, DbfFieldType.Numeric, length, @decimal);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Logical" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Logical(bool value) => CreateInline(value, ClrType.Boolean, DbfFieldType.Logical, length: 1, @decimal: 0);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Timestamp" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Timestamp(DateTime value) => CreateInline(value, ClrType.DateTime, DbfFieldType.Timestamp, length: 8, @decimal: 0);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Int32" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Int32(int value) => CreateInline(value, ClrType.Int32, DbfFieldType.Int32, length: 4, @decimal: 0);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.AutoIncrement" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField AutoIncrement(int value) => CreateInline(value, ClrType.Int32, DbfFieldType.AutoIncrement, length: 4, @decimal: 0);
+
+    /// <summary>
+    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Double" />.
+    /// </summary>
+    /// <param name="value">The value of the field.</param>
+    /// <returns>
+    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
+    /// </returns>
+    public static DbfField Double(double value) => CreateInline(value, ClrType.Double, DbfFieldType.Double, length: 4, @decimal: 0);
 
     /// <summary>
     /// Gets the <see cref="bool"/> value of this <see cref="DbfRecord"/>.
@@ -534,7 +578,11 @@ public readonly struct DbfField : IEquatable<DbfField>
 
         return _dbfType switch
         {
-            DbfFieldType.Character => _referenceValue ?? String.Empty,
+            DbfFieldType.Character or
+            DbfFieldType.Memo or
+            DbfFieldType.Binary or
+            DbfFieldType.Ole => _referenceValue ?? String.Empty,
+
             DbfFieldType.Numeric or
             DbfFieldType.Float or
             DbfFieldType.Int32 or
@@ -542,10 +590,7 @@ public readonly struct DbfField : IEquatable<DbfField>
             DbfFieldType.AutoIncrement => Convert.ToDouble(Value).ToString($"F{_decimal}"),
             DbfFieldType.Date => GetDateOnly().ToString("yyyyMMdd"),
             DbfFieldType.Timestamp => GetDateTime().ToString("o"),
-            DbfFieldType.Logical => GetBoolean() ? "T" : "F",
-            DbfFieldType.Memo or
-            DbfFieldType.Binary or
-            DbfFieldType.Ole => _referenceValue ?? String.Empty,
+            DbfFieldType.Logical => GetBooleanOrDefault() ? "T" : "F",
             _ => throw new NotImplementedException(),
         };
     }
@@ -641,70 +686,70 @@ public readonly struct DbfField : IEquatable<DbfField>
     }
 
     /// <summary>Performs an implicit conversion from <see cref="bool"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(bool value) => new(value);
+    public static implicit operator DbfField(bool value) => Logical(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField"/> to <see cref="bool"/>.</summary>
     public static explicit operator bool(DbfField value) => value.ConvertTo<bool>();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="bool" /><see langword="?" />.</summary>
     public static explicit operator bool?(DbfField value) => value.ConvertToNullable<bool>();
 
     /// <summary>Performs an implicit conversion from <see cref="byte"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(byte value) => new(value);
+    public static implicit operator DbfField(byte value) => Numeric(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField"/> to <see cref="byte"/>.</summary>
     public static explicit operator byte(DbfField value) => value.ConvertTo<byte>();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="byte" /><see langword="?" />.</summary>
     public static explicit operator byte?(DbfField value) => value.ConvertToNullable<byte>();
 
     /// <summary>Performs an implicit conversion from <see cref="short"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(short value) => new(value);
+    public static implicit operator DbfField(short value) => Numeric(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="short" />.</summary>
     public static explicit operator short(DbfField value) => value.ConvertTo<short>();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="short" /><see langword="?" />.</summary>
     public static explicit operator short?(DbfField value) => value.ConvertToNullable<short>();
 
     /// <summary>Performs an implicit conversion from <see cref="int"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(int value) => new(value);
+    public static implicit operator DbfField(int value) => Numeric(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="int" />.</summary>
     public static explicit operator int(DbfField value) => value.ConvertTo<int>();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="int" /><see langword="?" />.</summary>
     public static explicit operator int?(DbfField value) => value.ConvertToNullable<int>();
 
     /// <summary>Performs an implicit conversion from <see cref="long"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(long value) => new(value);
+    public static implicit operator DbfField(long value) => Numeric(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="long" />.</summary>
     public static explicit operator long(DbfField value) => value.ConvertTo<long>();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="long" /><see langword="?" />.</summary>
     public static explicit operator long?(DbfField value) => value.ConvertToNullable<long>();
 
     /// <summary>Performs an implicit conversion from <see cref="float"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(float value) => new(value);
+    public static implicit operator DbfField(float value) => Numeric(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="float" /><see langword="?" />.</summary>
     public static explicit operator float(DbfField value) => value.ConvertTo<float>();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="float" /><see langword="?" />.</summary>
     public static explicit operator float?(DbfField value) => value.ConvertToNullable<float>();
 
     /// <summary>Performs an implicit conversion from <see cref="double"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(double value) => new(value);
+    public static implicit operator DbfField(double value) => Numeric(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="double" /><see langword="?" />.</summary>
     public static explicit operator double(DbfField value) => value.ConvertTo<double>();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="double" /><see langword="?" />.</summary>
     public static explicit operator double?(DbfField value) => value.ConvertToNullable<double>();
 
     /// <summary>Performs an implicit conversion from <see cref="DateTime" /> to <see cref="DbfField" />.</summary>
-    public static implicit operator DbfField(DateTime value) => new(value);
+    public static implicit operator DbfField(DateTime value) => Timestamp(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateTime" /><see langword="?" />.</summary>
     public static explicit operator DateTime(DbfField value) => value.ConvertTo<DateTime>();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateTime" /><see langword="?" />.</summary>
     public static explicit operator DateTime?(DbfField value) => value.ConvertToNullable<DateTime>();
 
     /// <summary>Performs an implicit conversion from <see cref="DateOnly" /> to <see cref="DbfField" />.</summary>
-    public static implicit operator DbfField(DateOnly value) => new(value);
+    public static implicit operator DbfField(DateOnly value) => Date(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateOnly" /><see langword="?" />.</summary>
     public static explicit operator DateOnly(DbfField value) => value.ConvertTo<DateOnly>();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateOnly" /><see langword="?" />.</summary>
     public static explicit operator DateOnly?(DbfField value) => value.ConvertToNullable<DateOnly>();
 
     /// <summary>Performs an implicit conversion from <see cref="string"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(string? value) => value is null ? new(DbfFieldType.Character, 0, 0) : new(value);
+    public static implicit operator DbfField(string? value) => value is null ? Null(DbfFieldType.Character) : Character(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="string" />.</summary>
     public static explicit operator string?(DbfField value) => value._referenceValue;
 }

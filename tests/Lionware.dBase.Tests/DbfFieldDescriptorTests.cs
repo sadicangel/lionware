@@ -15,16 +15,16 @@ public sealed class DbfFieldDescriptorTests
 
     private static readonly Dictionary<DbfFieldDescriptor, object> Values = new()
     {
-        [DbfFieldDescriptor.Boolean("bool_field")] = true,
-        [DbfFieldDescriptor.Byte("byte_field")] = (long)128,
-        [DbfFieldDescriptor.Int64("i16_field")] = (long)Int16.MaxValue,
-        [DbfFieldDescriptor.Int32("i32_field")] = (long)Int32.MaxValue,
-        [DbfFieldDescriptor.Int64("i64_field")] = Int64.MaxValue,
-        [DbfFieldDescriptor.Single("f32_field")] = (double)Single.MaxValue / 2,
-        [DbfFieldDescriptor.Double("f64_field")] = Double.MaxValue / 2,
+        [DbfFieldDescriptor.Logical("bool_field")] = true,
+        [DbfFieldDescriptor.Numeric("byte_field")] = (double)128,
+        [DbfFieldDescriptor.Numeric("i16_field")] = (double)Int16.MaxValue,
+        [DbfFieldDescriptor.Numeric("i32_field")] = (double)Int32.MaxValue,
+        [DbfFieldDescriptor.Numeric("i64_field")] = (double)Int64.MaxValue,
+        [DbfFieldDescriptor.Numeric("f32_field")] = (double)Single.MaxValue / 2,
+        [DbfFieldDescriptor.Numeric("f64_field")] = Double.MaxValue / 2,
         [DbfFieldDescriptor.Date("date_field")] = new DateOnly(1987, 3, 29),
         [DbfFieldDescriptor.Timestamp("timestamp_field")] = new DateTime(1987, 3, 29, 0, 0, 0),
-        [DbfFieldDescriptor.Text("field_name", 50)] = "some long string with less than 50 chars",
+        [DbfFieldDescriptor.Character("field_name", 50)] = "some long string with less than 50 chars",
     };
 
     public static IEnumerable<object[]> GetValuesWithSourceData()

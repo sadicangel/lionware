@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
 
 namespace Lionware.dBase;
-public sealed class Dbf83Tests : DbfTests, IDisposable
+public sealed class Dbf83Tests : DbfTestsBase, IDisposable
 {
     public Dbf83Tests() : base("Resources/83.dbf") { }
 
@@ -59,6 +59,7 @@ public sealed class Dbf83Tests : DbfTests, IDisposable
                 var actual = record[j].ToString();
                 var expected = values[j];
 
+                Debug.WriteLine($"{ReadOnlySchema[j].NameString}: {expected}");
                 Assert.Equal(expected, actual);
             }
         }
@@ -73,7 +74,7 @@ public sealed class Dbf83Tests : DbfTests, IDisposable
         {
             var fields = new DbfField[csvRecord.Length];
             for (int i = 0; i < csvRecord.Length; ++i)
-                fields[i] = Parse(in ReadOnlySchema[i], csvRecord[i]);
+                fields[i] = ReadOnlySchema[i].ParseField(csvRecord[i]);
             var record = new DbfRecord(fields);
             dbf.Add(in record);
         }
@@ -85,7 +86,7 @@ public sealed class Dbf83Tests : DbfTests, IDisposable
             for (int j = 0; j < record.FieldCount; j++)
             {
                 var expected = values[j];
-                Debug.Write($"{ReadOnlySchema[j].NameString}: {expected}");
+                Debug.WriteLine($"{ReadOnlySchema[j].NameString}: {expected}");
                 var actual = record[j].ToString();
                 Assert.Equal(expected, actual);
             }

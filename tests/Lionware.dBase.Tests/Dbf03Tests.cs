@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
 
 namespace Lionware.dBase;
-public sealed class Dbf03Tests : DbfTests, IDisposable
+public sealed class Dbf03Tests : DbfTestsBase, IDisposable
 {
     public Dbf03Tests() : base("Resources/03.dbf") { }
 
@@ -73,7 +73,7 @@ public sealed class Dbf03Tests : DbfTests, IDisposable
         {
             var fields = new DbfField[csvRecord.Length];
             for (int i = 0; i < csvRecord.Length; ++i)
-                fields[i] = Parse(in ReadOnlySchema[i], csvRecord[i]);
+                fields[i] = ReadOnlySchema[i].ParseField(csvRecord[i]);
             var record = new DbfRecord(fields);
             dbf.Add(in record);
         }

@@ -4,47 +4,46 @@ namespace Lionware.dBase;
 
 public sealed class DbfFieldTests
 {
-    private static readonly dynamic?[] ValidValues = new dynamic?[]
+    private static readonly object[][] ValidValues = new object[][]
     {
-        null,
-        true,
-        (byte)123,
-        (short)12345,
-        684692656,
-        9053598978304173029,
-        0.05814f,
-        0.058148685515572951,
-        new DateTime(1987, 3, 29, 6, 30, 57),
-        new DateOnly(1987, 3, 29),
-        "some-random-string!",
+        new object[] { (bool b) => DbfField.Logical(b), true },
+        new object[] { (byte b) => DbfField.Numeric(b), (byte)123},
+        new object[] { (short s) => DbfField.Numeric(s), (short)12345},
+        new object[] { (int i) => DbfField.Numeric(i), 684692656},
+        new object[] { (long l) => DbfField.Numeric(l), 9053598978304173029},
+        new object[] { (float f) => DbfField.Numeric(f), 0.05814f},
+        new object[] { (double d) => DbfField.Numeric(d), 0.058148685515572951},
+        new object[] { (DateTime d) => DbfField.Timestamp(d), new DateTime(1987, 3, 29, 6, 30, 57)},
+        new object[] { (DateOnly d) => DbfField.Date(d), new DateOnly(1987, 3, 29)},
+        new object[] { (string s) => DbfField.Character(s), "some-random-string!" },
     };
 
     private static readonly MethodInfo GetValueMethod = typeof(DbfField).GetMethod(nameof(DbfField.GetValue))!;
 
-    public static IEnumerable<object?[]> GetValidValuesData() => ValidValues.Select(v => new object?[] { v });
+    public static IEnumerable<object?[]> GetValidValuesData() => ValidValues;
 
     [Theory]
     [MemberData(nameof(GetValidValuesData))]
-    public void DbfField_Constructor_ConstructsValue(dynamic? value)
+    public void DbfField_Constructor_ConstructsValue(Delegate @delegate, object value)
     {
-        Assert.Null(Record.Exception(() => new DbfField(value)));
+        Assert.Null(Record.Exception(() => @delegate.DynamicInvoke(new object[] { value })));
     }
 
-    public static IEnumerable<object?[]> GetValidValuesWithTypeData() => ValidValues.Select(v => new object?[] { v, v?.GetType() ?? typeof(string) });
+    public static IEnumerable<object?[]> GetValidValuesWithTypeData() => ValidValues.Select(v => v.Append(v[1].GetType()).ToArray());
 
     [Theory]
     [MemberData(nameof(GetValidValuesData))]
-    public void DbfField_GetValue_GetsCorrectObjectValue(dynamic? value)
+    public void DbfField_GetValue_GetsCorrectObjectValue(Delegate @delegate, object value)
     {
-        var field = new DbfField(value);
+        var field = (DbfField)@delegate.DynamicInvoke(new object[] { value })!;
         Assert.Equal(value, field.Value);
     }
 
     [Theory]
     [MemberData(nameof(GetValidValuesWithTypeData))]
-    public void DbfField_GetValue_GetsCorrectGenericValue(dynamic? value, Type type)
+    public void DbfField_GetValue_GetsCorrectGenericValue(Delegate @delegate, object value, Type type)
     {
-        var field = new DbfField(value);
+        var field = (DbfField)@delegate.DynamicInvoke(new object[] { value })!;
         var generic = GetValueMethod.MakeGenericMethod(type);
         var result = generic.Invoke(field, null);
         Assert.Equal(value, result);
@@ -53,10 +52,10 @@ public sealed class DbfFieldTests
     public static IEnumerable<object?[]> GetValidNonNullValuesWithTypeData() => ValidValues.Where(v => v is not null).Select(v => new object?[] { v, v?.GetType() ?? typeof(string) });
 
     [Theory]
-    [MemberData(nameof(GetValidNonNullValuesWithTypeData))]
-    public void DbfField_GetValue_GetsCorrectSpecificValue(dynamic? value, Type type)
+    [MemberData(nameof(GetValidValuesWithTypeData))]
+    public void DbfField_GetValue_GetsCorrectSpecificValue(Delegate @delegate, object value, Type type)
     {
-        var field = new DbfField(value);
+        var field = (DbfField)@delegate.DynamicInvoke(new object[] { value })!;
         var method = typeof(DbfField).GetMethod($"Get{type.Name}");
         Assert.NotNull(method);
         var result = method.Invoke(field, null);
@@ -64,8 +63,8 @@ public sealed class DbfFieldTests
     }
 
     [Theory]
-    [MemberData(nameof(GetValidNonNullValuesWithTypeData))]
-    public void DbfField_GetValueOrDefault_GetsCorrectDefaultValue(dynamic? defaultValue, Type type)
+    [MemberData(nameof(GetValidValuesWithTypeData))]
+    public void DbfField_GetValueOrDefault_GetsCorrectDefaultValue(Delegate _, object defaultValue, Type type)
     {
         var field = new DbfField();
         var method = typeof(DbfField).GetMethod($"Get{type.Name}OrDefault");
