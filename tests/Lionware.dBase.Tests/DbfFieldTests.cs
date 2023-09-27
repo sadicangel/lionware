@@ -7,15 +7,16 @@ public sealed class DbfFieldTests
     private static readonly object[][] ValidValues = new object[][]
     {
         new object[] { (bool b) => DbfField.Logical(b), true },
-        new object[] { (byte b) => DbfField.Numeric(b), (byte)123},
-        new object[] { (short s) => DbfField.Numeric(s), (short)12345},
-        new object[] { (int i) => DbfField.Numeric(i), 684692656},
-        new object[] { (long l) => DbfField.Numeric(l), 9053598978304173029},
-        new object[] { (float f) => DbfField.Numeric(f), 0.05814f},
+        new object[] { (int i) => DbfField.Int32(i), 684692656},
+        new object[] { (int i) => DbfField.AutoIncrement(i), 684692656},
+        new object[] { (double d) => DbfField.Float(d), 0.058148685515572951},
         new object[] { (double d) => DbfField.Numeric(d), 0.058148685515572951},
+        new object[] { (double d) => DbfField.Double(d), 0.058148685515572951},
         new object[] { (DateTime d) => DbfField.Timestamp(d), new DateTime(1987, 3, 29, 6, 30, 57)},
         new object[] { (DateOnly d) => DbfField.Date(d), new DateOnly(1987, 3, 29)},
         new object[] { (string s) => DbfField.Character(s), "some-random-string!" },
+        new object[] { (string s) => DbfField.Memo(s), "some-random-string!" },
+        new object[] { (string s) => DbfField.Binary(s), "some-random-string!" },
     };
 
     private static readonly MethodInfo GetValueMethod = typeof(DbfField).GetMethod(nameof(DbfField.GetValue))!;
@@ -64,8 +65,9 @@ public sealed class DbfFieldTests
 
     [Theory]
     [MemberData(nameof(GetValidValuesWithTypeData))]
-    public void DbfField_GetValueOrDefault_GetsCorrectDefaultValue(Delegate _, object defaultValue, Type type)
+    public void DbfField_GetValueOrDefault_GetsCorrectDefaultValue(Delegate @delegate, object defaultValue, Type type)
     {
+        _ = @delegate;
         var field = new DbfField();
         var method = typeof(DbfField).GetMethod($"Get{type.Name}OrDefault");
         Assert.NotNull(method);

@@ -530,28 +530,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 throw new InvalidEnumArgumentException(nameof(Type), (int)Type, typeof(DbfFieldType));
         }
 
-        static void FormatInt<T>(in DbfField field, Span<byte> target, int maxLengthToFormatT, IDbfContext context) where T : struct, IBinaryInteger<T>
-        {
-            Span<char> buffer = stackalloc char[maxLengthToFormatT];
-            var value = field.ReadInlineValue<T>();
-            var result = value.TryFormat(buffer, out var charsWritten, default, CultureInfo.InvariantCulture);
-            Debug.Assert(result);
-            if (charsWritten < target.Length)
-            {
-                buffer = buffer[..Math.Min(target.Length, buffer.Length)];
-                var shift = target.Length - charsWritten;
-                for (int i = target.Length - 1; i >= shift; --i)
-                    buffer[i] = buffer[i - shift];
-                buffer[..shift].Fill(' ');
-            }
-            else if (charsWritten > target.Length)
-            {
-                buffer = buffer[..target.Length];
-            }
-
-            context.Encoding.GetBytes(buffer, target);
-        }
-
         static void FormatFloat<T>(in DbfField field, Span<byte> target, int maxLengthToFormatT, IDbfContext context, int decimalSpaces) where T : struct, IFloatingPoint<T>
         {
             Span<char> buffer = stackalloc char[maxLengthToFormatT];
@@ -610,6 +588,13 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return field;
     }
 
+    /// <summary>
+    /// Tries to parse a string into a value.
+    /// </summary>
+    /// <param name="s">The string to parse.</param>
+    /// <param name="result">When this method returns, contains the result of successfully parsing s or an
+    /// undefined value on failure.</param>
+    /// <returns><see langword="true" /> if s was successfully parsed; otherwise, <see langword="false" />.</returns>
     public bool TryParseField([NotNullWhen(true)] string? s, [MaybeNullWhen(false)] out DbfField result)
     {
         switch (Type)

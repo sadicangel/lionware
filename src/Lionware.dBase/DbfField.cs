@@ -20,11 +20,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     {
         Empty = 0,
         Boolean = 3,
-        Byte = 6,
-        Int16 = 7,
         Int32 = 9,
-        Int64 = 11,
-        Single = 13,
         Double = 14,
         DateTime = 16,
         DateOnly = 17,
@@ -109,11 +105,7 @@ public readonly struct DbfField : IEquatable<DbfField>
         get => _clrType switch
         {
             ClrType.Boolean => ReadInlineValue<bool>(),
-            ClrType.Byte => ReadInlineValue<byte>(),
-            ClrType.Int16 => ReadInlineValue<short>(),
             ClrType.Int32 => ReadInlineValue<int>(),
-            ClrType.Int64 => ReadInlineValue<long>(),
-            ClrType.Single => ReadInlineValue<float>(),
             ClrType.Double => ReadInlineValue<double>(),
             ClrType.DateTime => ReadInlineValue<DateTime>(),
             ClrType.DateOnly => ReadInlineValue<DateOnly>(),
@@ -127,7 +119,19 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <remarks>The value is boxed for value types.</remarks>
     public T? GetValue<T>() => (T?)Value;
 
-    private void ThrowInvalidType(ClrType expectedType) => throw new InvalidOperationException($"Cannot convert value to {expectedType}. Field type is {_clrType}");
+    private T ThrowInvalidType<T>(ClrType expectedType) => throw new InvalidOperationException($"Cannot convert value to {expectedType}. Field type is {_clrType}");
+    private T ThrowInvalidType<T>(params ClrType[] expectedTypes)
+    {
+        switch (expectedTypes.Length)
+        {
+            case 0:
+                throw new InvalidOperationException($"Unexpected field type {_clrType}");
+            case > 1:
+                throw new InvalidOperationException($"Cannot convert value to {String.Join(", ", expectedTypes.Take(expectedTypes.Length - 1).Select(e => e.ToString()))} or {expectedTypes[^1]}. Field type is {_clrType}");
+            default:
+                return ThrowInvalidType<T>(expectedTypes[0]);
+        }
+    }
 
     /// <summary>
     /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Character" />.
@@ -199,74 +203,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
     /// </returns>
     /// <remarks>Identical to <see cref="DbfFieldType.Numeric" />; maintained for compatibility.</remarks>
-    public static DbfField Float(float value, byte length = 10, byte @decimal = 0) => CreateInline(value, ClrType.Single, DbfFieldType.Float, length, @decimal);
-
-    /// <summary>
-    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Float" />.
-    /// </summary>
-    /// <param name="value">The value of the field.</param>
-    /// <param name="length">The length of the field (number of ASCII characters).</param>
-    /// <param name="decimal">The number of decimal digits.</param>
-    /// <returns>
-    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
-    /// </returns>
-    /// <remarks>Identical to <see cref="DbfFieldType.Numeric" />; maintained for compatibility.</remarks>
     public static DbfField Float(double value, byte length = 10, byte @decimal = 0) => CreateInline(value, ClrType.Double, DbfFieldType.Float, length, @decimal);
-
-    /// <summary>
-    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
-    /// </summary>
-    /// <param name="value">The value of the field.</param>
-    /// <param name="length">The length of the field (number of ASCII characters).</param>
-    /// <param name="decimal">The number of decimal digits.</param>
-    /// <returns>
-    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
-    /// </returns>
-    public static DbfField Numeric(byte value, byte length = 3, byte @decimal = 0) => CreateInline(value, ClrType.Byte, DbfFieldType.Numeric, length, @decimal);
-
-    /// <summary>
-    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
-    /// </summary>
-    /// <param name="value">The value of the field.</param>
-    /// <param name="length">The length of the field (number of ASCII characters).</param>
-    /// <param name="decimal">The number of decimal digits.</param>
-    /// <returns>
-    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
-    /// </returns>
-    public static DbfField Numeric(short value, byte length = 5, byte @decimal = 0) => CreateInline(value, ClrType.Int16, DbfFieldType.Numeric, length, @decimal);
-
-    /// <summary>
-    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
-    /// </summary>
-    /// <param name="value">The value of the field.</param>
-    /// <param name="length">The length of the field (number of ASCII characters).</param>
-    /// <param name="decimal">The number of decimal digits.</param>
-    /// <returns>
-    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
-    /// </returns>
-    public static DbfField Numeric(int value, byte length = 10, byte @decimal = 0) => CreateInline(value, ClrType.Int32, DbfFieldType.Numeric, length, @decimal);
-
-    /// <summary>
-    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
-    /// </summary>
-    /// <param name="value">The value of the field.</param>
-    /// <param name="length">The length of the field (number of ASCII characters).</param>
-    /// <param name="decimal">The number of decimal digits.</param>
-    /// <returns>
-    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
-    /// </returns>
-    public static DbfField Numeric(long value, byte length = 20, byte @decimal = 0) => CreateInline(value, ClrType.Int64, DbfFieldType.Numeric, length, @decimal);
-
-    /// <summary>
-    /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
-    /// </summary>
-    /// <param name="value">The value of the field.</param>
-    /// <param name="length">The length of the field (number of ASCII characters).</param>
-    /// <param name="decimal">The number of decimal digits.</param>
-    /// <returns>
-    /// A new <see cref="DbfField" /> that stores the specified <paramref name="value"/>.
-    /// </returns>
-    public static DbfField Numeric(float value, byte length = 14, byte @decimal = 7) => CreateInline(value, ClrType.Single, DbfFieldType.Numeric, length, @decimal);
 
     /// <summary>
     /// Creates a new <see cref="DbfField" /> of type <see cref="DbfFieldType.Numeric" />.
@@ -328,12 +265,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// Gets the <see cref="bool"/> value of this <see cref="DbfRecord"/>.
     /// </summary>
     /// <exception cref="InvalidOperationException" />
-    public bool GetBoolean()
-    {
-        if (_clrType is not ClrType.Boolean)
-            ThrowInvalidType(ClrType.Boolean);
-        return ReadInlineValue<bool>();
-    }
+    public bool GetBoolean() => _clrType is not ClrType.Boolean ? ThrowInvalidType<bool>(ClrType.Boolean) : ReadInlineValue<bool>();
 
     /// <summary>
     /// Gets the <see cref="bool"/> value of this <see cref="DbfRecord"/>
@@ -341,71 +273,13 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// </summary>
     /// <param name="defaultValue">The default value to return if the field is empty.</param>
     /// <exception cref="InvalidOperationException" />
-    public bool GetBooleanOrDefault(bool defaultValue = default)
-    {
-        if (_clrType is ClrType.Empty)
-            return defaultValue;
-        return GetBoolean();
-    }
-
-    /// <summary>
-    /// Gets the <see cref="byte"/> value of this <see cref="DbfRecord"/>.
-    /// </summary>
-    /// <exception cref="InvalidOperationException" />
-    public byte GetByte()
-    {
-        if (_clrType is not ClrType.Byte)
-            ThrowInvalidType(ClrType.Byte);
-        return ReadInlineValue<byte>();
-    }
-
-    /// <summary>
-    /// Gets the <see cref="byte"/> value of this <see cref="DbfRecord"/>
-    /// or the specified <paramref name="defaultValue"/> if the field is empty.
-    /// </summary>
-    /// <param name="defaultValue">The default value to return if the field is empty.</param>
-    /// <exception cref="InvalidOperationException" />
-    public byte GetByteOrDefault(byte defaultValue = default)
-    {
-        if (_clrType is ClrType.Empty)
-            return defaultValue;
-        return GetByte();
-    }
-
-    /// <summary>
-    /// Gets the <see cref="short"/> value of this <see cref="DbfRecord"/>.
-    /// </summary>
-    /// <exception cref="InvalidOperationException" />
-    public short GetInt16()
-    {
-        if (_clrType is not ClrType.Int16)
-            ThrowInvalidType(ClrType.Int16);
-        return ReadInlineValue<short>();
-    }
-
-    /// <summary>
-    /// Gets the <see cref="short"/> value of this <see cref="DbfRecord"/>
-    /// or the specified <paramref name="defaultValue"/> if the field is empty.
-    /// </summary>
-    /// <param name="defaultValue">The default value to return if the field is empty.</param>
-    /// <exception cref="InvalidOperationException" />
-    public short GetInt16OrDefault(short defaultValue = default)
-    {
-        if (_clrType is ClrType.Empty)
-            return defaultValue;
-        return GetInt16();
-    }
+    public bool GetBooleanOrDefault(bool defaultValue = default) => _clrType is ClrType.Empty ? defaultValue : GetBoolean();
 
     /// <summary>
     /// Gets the <see cref="int"/> value of this <see cref="DbfRecord"/>.
     /// </summary>
     /// <exception cref="InvalidOperationException" />
-    public int GetInt32()
-    {
-        if (_clrType is not ClrType.Int32)
-            ThrowInvalidType(ClrType.Int32);
-        return ReadInlineValue<int>();
-    }
+    public int GetInt32() => _clrType is not ClrType.Int32 ? ThrowInvalidType<int>(ClrType.Int32) : ReadInlineValue<int>();
 
     /// <summary>
     /// Gets the <see cref="int"/> value of this <see cref="DbfRecord"/>
@@ -413,71 +287,13 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// </summary>
     /// <param name="defaultValue">The default value to return if the field is empty.</param>
     /// <exception cref="InvalidOperationException" />
-    public int GetInt32OrDefault(int defaultValue = default)
-    {
-        if (_clrType is ClrType.Empty)
-            return defaultValue;
-        return GetInt32();
-    }
-
-    /// <summary>
-    /// Gets the <see cref="long"/> value of this <see cref="DbfRecord"/>.
-    /// </summary>
-    /// <exception cref="InvalidOperationException" />
-    public long GetInt64()
-    {
-        if (_clrType is not ClrType.Int64)
-            ThrowInvalidType(ClrType.Int64);
-        return ReadInlineValue<long>();
-    }
-
-    /// <summary>
-    /// Gets the <see cref="long"/> value of this <see cref="DbfRecord"/>
-    /// or the specified <paramref name="defaultValue"/> if the field is empty.
-    /// </summary>
-    /// <param name="defaultValue">The default value to return if the field is empty.</param>
-    /// <exception cref="InvalidOperationException" />
-    public long GetInt64OrDefault(long defaultValue = default)
-    {
-        if (_clrType is ClrType.Empty)
-            return defaultValue;
-        return GetInt64();
-    }
-
-    /// <summary>
-    /// Gets the <see cref="float"/> value of this <see cref="DbfRecord"/>.
-    /// </summary>
-    /// <exception cref="InvalidOperationException" />
-    public float GetSingle()
-    {
-        if (_clrType is not ClrType.Single)
-            ThrowInvalidType(ClrType.Single);
-        return ReadInlineValue<float>();
-    }
-
-    /// <summary>
-    /// Gets the <see cref="float"/> value of this <see cref="DbfRecord"/>
-    /// or the specified <paramref name="defaultValue"/> if the field is empty.
-    /// </summary>
-    /// <param name="defaultValue">The default value to return if the field is empty.</param>
-    /// <exception cref="InvalidOperationException" />
-    public float GetSingleOrDefault(float defaultValue = default)
-    {
-        if (_clrType is ClrType.Empty)
-            return defaultValue;
-        return GetSingle();
-    }
+    public int GetInt32OrDefault(int defaultValue = default) => _clrType is ClrType.Empty ? defaultValue : GetInt32();
 
     /// <summary>
     /// Gets the <see cref="double"/> value of this <see cref="DbfRecord"/>.
     /// </summary>
     /// <exception cref="InvalidOperationException" />
-    public double GetDouble()
-    {
-        if (_clrType is not ClrType.Double)
-            ThrowInvalidType(ClrType.Double);
-        return ReadInlineValue<double>();
-    }
+    public double GetDouble() => _clrType is not ClrType.Double ? ThrowInvalidType<double>(ClrType.Double) : ReadInlineValue<double>();
 
     /// <summary>
     /// Gets the <see cref="double"/> value of this <see cref="DbfRecord"/>
@@ -496,12 +312,12 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// Gets the <see cref="DateTime"/> value of this <see cref="DbfRecord"/>.
     /// </summary>
     /// <exception cref="InvalidOperationException" />
-    public DateTime GetDateTime()
+    public DateTime GetDateTime() => _clrType switch
     {
-        if (_clrType is not ClrType.DateTime)
-            ThrowInvalidType(ClrType.DateTime);
-        return ReadInlineValue<DateTime>();
-    }
+        ClrType.DateTime => ReadInlineValue<DateTime>(),
+        ClrType.DateOnly => ReadInlineValue<DateOnly>().ToDateTime(TimeOnly.MinValue),
+        _ => ThrowInvalidType<DateTime>(ClrType.DateTime, ClrType.DateOnly),
+    };
 
     /// <summary>
     /// Gets the <see cref="DateTime"/> value of this <see cref="DbfRecord"/>
@@ -509,23 +325,18 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// </summary>
     /// <param name="defaultValue">The default value to return if the field is empty.</param>
     /// <exception cref="InvalidOperationException" />
-    public DateTime GetDateTimeOrDefault(DateTime defaultValue = default)
-    {
-        if (_clrType is ClrType.Empty)
-            return defaultValue;
-        return GetDateTime();
-    }
+    public DateTime GetDateTimeOrDefault(DateTime defaultValue = default) => _clrType is ClrType.Empty ? defaultValue : GetDateTime();
 
     /// <summary>
     /// Gets the <see cref="DateOnly"/> value of this <see cref="DbfRecord"/>.
     /// </summary>
     /// <exception cref="InvalidOperationException" />
-    public DateOnly GetDateOnly()
+    public DateOnly GetDateOnly() => _clrType switch
     {
-        if (_clrType is not ClrType.DateOnly)
-            ThrowInvalidType(ClrType.DateOnly);
-        return ReadInlineValue<DateOnly>();
-    }
+        ClrType.DateTime => DateOnly.FromDateTime(ReadInlineValue<DateTime>()),
+        ClrType.DateOnly => ReadInlineValue<DateOnly>(),
+        _ => ThrowInvalidType<DateOnly>(ClrType.DateTime, ClrType.DateOnly),
+    };
 
     /// <summary>
     /// Gets the <see cref="DateOnly"/> value of this <see cref="DbfRecord"/>
@@ -533,23 +344,13 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// </summary>
     /// <param name="defaultValue">The default value to return if the field is empty.</param>
     /// <exception cref="InvalidOperationException" />
-    public DateOnly GetDateOnlyOrDefault(DateOnly defaultValue = default)
-    {
-        if (_clrType is ClrType.Empty)
-            return defaultValue;
-        return GetDateOnly();
-    }
+    public DateOnly GetDateOnlyOrDefault(DateOnly defaultValue = default) => _clrType is ClrType.Empty ? defaultValue : GetDateOnly();
 
     /// <summary>
     /// Gets the <see cref="string"/> value of this <see cref="DbfRecord"/>.
     /// </summary>
     /// <exception cref="InvalidOperationException" />
-    public string GetString()
-    {
-        if (_clrType is not ClrType.String)
-            ThrowInvalidType(ClrType.String);
-        return _referenceValue!;
-    }
+    public string GetString() => _clrType is not ClrType.String ? ThrowInvalidType<string>(ClrType.String) : _referenceValue!;
 
     /// <summary>
     /// Gets the <see cref="string"/> value of this <see cref="DbfRecord"/>
@@ -558,12 +359,7 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <param name="defaultValue">The default value to return if the field is empty.</param>
     /// <exception cref="InvalidOperationException" />
     [return: NotNullIfNotNull(nameof(defaultValue))]
-    public string? GetStringOrDefault(string? defaultValue = default)
-    {
-        if (_clrType is ClrType.Empty)
-            return defaultValue;
-        return GetString();
-    }
+    public string? GetStringOrDefault(string? defaultValue = default) => _clrType is ClrType.Empty ? defaultValue : GetString();
 
     /// <summary>
     /// Returns the string representation of this instance.
@@ -661,11 +457,7 @@ public readonly struct DbfField : IEquatable<DbfField>
         switch (_clrType)
         {
             case ClrType.Boolean when typeof(T) == typeof(bool):
-            case ClrType.Byte when typeof(T) == typeof(byte):
-            case ClrType.Int16 when typeof(T) == typeof(short):
             case ClrType.Int32 when typeof(T) == typeof(int):
-            case ClrType.Int64 when typeof(T) == typeof(long):
-            case ClrType.Single when typeof(T) == typeof(float):
             case ClrType.Double when typeof(T) == typeof(double):
             case ClrType.DateTime when typeof(T) == typeof(DateTime):
             case ClrType.DateOnly when typeof(T) == typeof(DateOnly):
@@ -688,68 +480,33 @@ public readonly struct DbfField : IEquatable<DbfField>
     /// <summary>Performs an implicit conversion from <see cref="bool"/> to <see cref="DbfField"/>.</summary>
     public static implicit operator DbfField(bool value) => Logical(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField"/> to <see cref="bool"/>.</summary>
-    public static explicit operator bool(DbfField value) => value.ConvertTo<bool>();
+    public static explicit operator bool(DbfField value) => value.GetBoolean();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="bool" /><see langword="?" />.</summary>
-    public static explicit operator bool?(DbfField value) => value.ConvertToNullable<bool>();
-
-    /// <summary>Performs an implicit conversion from <see cref="byte"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(byte value) => Numeric(value);
-    /// <summary>Performs an explicit conversion from <see cref="DbfField"/> to <see cref="byte"/>.</summary>
-    public static explicit operator byte(DbfField value) => value.ConvertTo<byte>();
-    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="byte" /><see langword="?" />.</summary>
-    public static explicit operator byte?(DbfField value) => value.ConvertToNullable<byte>();
-
-    /// <summary>Performs an implicit conversion from <see cref="short"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(short value) => Numeric(value);
-    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="short" />.</summary>
-    public static explicit operator short(DbfField value) => value.ConvertTo<short>();
-    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="short" /><see langword="?" />.</summary>
-    public static explicit operator short?(DbfField value) => value.ConvertToNullable<short>();
-
-    /// <summary>Performs an implicit conversion from <see cref="int"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(int value) => Numeric(value);
-    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="int" />.</summary>
-    public static explicit operator int(DbfField value) => value.ConvertTo<int>();
-    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="int" /><see langword="?" />.</summary>
-    public static explicit operator int?(DbfField value) => value.ConvertToNullable<int>();
-
-    /// <summary>Performs an implicit conversion from <see cref="long"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(long value) => Numeric(value);
-    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="long" />.</summary>
-    public static explicit operator long(DbfField value) => value.ConvertTo<long>();
-    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="long" /><see langword="?" />.</summary>
-    public static explicit operator long?(DbfField value) => value.ConvertToNullable<long>();
-
-    /// <summary>Performs an implicit conversion from <see cref="float"/> to <see cref="DbfField"/>.</summary>
-    public static implicit operator DbfField(float value) => Numeric(value);
-    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="float" /><see langword="?" />.</summary>
-    public static explicit operator float(DbfField value) => value.ConvertTo<float>();
-    /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="float" /><see langword="?" />.</summary>
-    public static explicit operator float?(DbfField value) => value.ConvertToNullable<float>();
+    public static explicit operator bool?(DbfField value) => value.GetBooleanOrDefault();
 
     /// <summary>Performs an implicit conversion from <see cref="double"/> to <see cref="DbfField"/>.</summary>
     public static implicit operator DbfField(double value) => Numeric(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="double" /><see langword="?" />.</summary>
-    public static explicit operator double(DbfField value) => value.ConvertTo<double>();
+    public static explicit operator double(DbfField value) => value.GetDouble();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="double" /><see langword="?" />.</summary>
-    public static explicit operator double?(DbfField value) => value.ConvertToNullable<double>();
+    public static explicit operator double?(DbfField value) => value.GetDoubleOrDefault();
 
     /// <summary>Performs an implicit conversion from <see cref="DateTime" /> to <see cref="DbfField" />.</summary>
     public static implicit operator DbfField(DateTime value) => Timestamp(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateTime" /><see langword="?" />.</summary>
-    public static explicit operator DateTime(DbfField value) => value.ConvertTo<DateTime>();
+    public static explicit operator DateTime(DbfField value) => value.GetDateTime();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateTime" /><see langword="?" />.</summary>
-    public static explicit operator DateTime?(DbfField value) => value.ConvertToNullable<DateTime>();
+    public static explicit operator DateTime?(DbfField value) => value.GetDateTimeOrDefault();
 
     /// <summary>Performs an implicit conversion from <see cref="DateOnly" /> to <see cref="DbfField" />.</summary>
     public static implicit operator DbfField(DateOnly value) => Date(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateOnly" /><see langword="?" />.</summary>
-    public static explicit operator DateOnly(DbfField value) => value.ConvertTo<DateOnly>();
+    public static explicit operator DateOnly(DbfField value) => value.GetDateOnly();
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="DateOnly" /><see langword="?" />.</summary>
-    public static explicit operator DateOnly?(DbfField value) => value.ConvertToNullable<DateOnly>();
+    public static explicit operator DateOnly?(DbfField value) => value.GetDateOnlyOrDefault();
 
     /// <summary>Performs an implicit conversion from <see cref="string"/> to <see cref="DbfField"/>.</summary>
     public static implicit operator DbfField(string? value) => value is null ? Null(DbfFieldType.Character) : Character(value);
     /// <summary>Performs an explicit conversion from <see cref="DbfField" /> to <see cref="string" />.</summary>
-    public static explicit operator string?(DbfField value) => value._referenceValue;
+    public static explicit operator string?(DbfField value) => value.GetStringOrDefault();
 }

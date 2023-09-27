@@ -1,45 +1,52 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Lionware.dBase;
 public sealed class DbfFieldDescriptorTests
 {
-    private sealed record class DbfContextImpl : IDbfContext
-    {
-        public Encoding Encoding { get => Encoding.ASCII; }
-        public char DecimalSeparator { get => '.'; }
-        public DbfMemoFile? MemoFile { get; }
-    }
-
     private static readonly IDbfContext DbfContext = new DbfContextImpl();
 
-    private static readonly Dictionary<DbfFieldDescriptor, object> Values = new()
+    private static readonly Dictionary<DbfFieldDescriptor, object?> Values = new()
     {
-        [DbfFieldDescriptor.Logical("bool_field")] = true,
-        [DbfFieldDescriptor.Numeric("byte_field")] = (double)128,
-        [DbfFieldDescriptor.Numeric("i16_field")] = (double)Int16.MaxValue,
-        [DbfFieldDescriptor.Numeric("i32_field")] = (double)Int32.MaxValue,
-        [DbfFieldDescriptor.Numeric("i64_field")] = (double)Int64.MaxValue,
-        [DbfFieldDescriptor.Numeric("f32_field")] = (double)Single.MaxValue / 2,
-        [DbfFieldDescriptor.Numeric("f64_field")] = Double.MaxValue / 2,
-        [DbfFieldDescriptor.Date("date_field")] = new DateOnly(1987, 3, 29),
-        [DbfFieldDescriptor.Timestamp("timestamp_field")] = new DateTime(1987, 3, 29, 0, 0, 0),
-        [DbfFieldDescriptor.Character("field_name", 50)] = "some long string with less than 50 chars",
+        [DbfFieldDescriptor.Logical("logical")] = true,
+        [DbfFieldDescriptor.Numeric("numeric")] = Double.MaxValue / 2,
+        [DbfFieldDescriptor.Float("float")] = Double.MaxValue / 2,
+        [DbfFieldDescriptor.Int32("int32")] = Int32.MaxValue / 2,
+        [DbfFieldDescriptor.AutoIncrement("autoincrement")] = Int32.MaxValue / 2,
+        [DbfFieldDescriptor.Double("double")] = Double.MaxValue / 2,
+        [DbfFieldDescriptor.Date("date")] = new DateOnly(1987, 3, 29),
+        [DbfFieldDescriptor.Timestamp("timestamp")] = new DateTime(1987, 3, 29, 0, 0, 0),
+        [DbfFieldDescriptor.Character("character", 50)] = "some long string with less than 50 chars",
+        [DbfFieldDescriptor.Memo("memo", 50)] = null,
+        [DbfFieldDescriptor.Binary("binary", 50)] = null,
+        [DbfFieldDescriptor.Ole("ole", 50)] = null,
     };
 
-    public static IEnumerable<object[]> GetValuesWithSourceData()
+    public static IEnumerable<object?[]> GetValuesWithSourceData()
     {
-        return Values.Select(v => new object[]
+        return Values.Select(v => new object?[]
         {
             v.Key,
-            v.Value switch {
-                bool b => new byte[] { (byte)(b ? 'T' : 'F') },
-                DateTime d => GetTimestampData(d),
-                DateOnly d => Encoding.ASCII.GetBytes(d.ToString("yyyyMMdd")),
+            (v.Key.Type, v.Value) switch {
+                (_, null) => GetEmptyArray(v.Key.Length),
+                (DbfFieldType.Logical, bool b) => new byte[] { (byte)(b ? 'T' : 'F') },
+                (DbfFieldType.Int32, int i) => BitConverter.GetBytes(i),
+                (DbfFieldType.AutoIncrement, int i) => BitConverter.GetBytes(i),
+                (DbfFieldType.Double, double d) => BitConverter.GetBytes(d),
+                (DbfFieldType.Date, DateOnly d) => Encoding.ASCII.GetBytes(d.ToString("yyyyMMdd")),
+                (DbfFieldType.Timestamp, DateTime d) => GetTimestampData(d),
                 _ => Encoding.ASCII.GetBytes(v.Value.ToString()!)
             },
             v.Value
         });
+
+        static byte[] GetEmptyArray(int length)
+        {
+            var bytes = new byte[length];
+            Array.Fill(bytes, (byte)' ');
+            return bytes;
+        }
 
         static byte[] GetTimestampData(DateTime timestamp)
         {
@@ -58,9 +65,17 @@ public sealed class DbfFieldDescriptorTests
 
     [Theory]
     [MemberData(nameof(GetValuesWithSourceData))]
-    public void DbfFieldDescriptor_Read_ReadsFields(DbfFieldDescriptor descriptor, byte[] source, object expectedValue)
+    public void DbfFieldDescriptor_Read_ReadsFields(DbfFieldDescriptor descriptor, byte[] source, object? expectedValue)
     {
+        Debug.WriteLine($"{expectedValue?.GetType().Name ?? nameof(Object)}: {expectedValue}");
         var field = descriptor.CreateReader().Invoke(source, DbfContext);
         Assert.Equal(expectedValue, field.Value);
     }
+}
+
+file sealed record class DbfContextImpl : IDbfContext
+{
+    public Encoding Encoding { get => Encoding.ASCII; }
+    public char DecimalSeparator { get => '.'; }
+    public DbfMemoFile? MemoFile { get; }
 }
