@@ -1,56 +1,56 @@
 ﻿using System.Diagnostics;
 
 namespace Lionware.dBase;
-public sealed class Dbf03Tests : IClassFixture<Dbf03Fixture>
+public sealed class Dbf03_should : IClassFixture<Dbf03Fixture>
 {
     private readonly Dbf03Fixture _fixture;
 
-    public Dbf03Tests(Dbf03Fixture fixture) => _fixture = fixture;
+    public Dbf03_should(Dbf03Fixture fixture) => _fixture = fixture;
 
     [Fact]
-    public void Dbf_Version_IsCorrect()
+    public void Return_3_for_Version()
     {
         Assert.Equal(3, _fixture.ReadOnlyDbf.Version);
     }
 
     [Fact]
-    public void Dbf_IsFoxPro_IsCorrect()
+    public void Return_false_for_IsFoxPro()
     {
         Assert.False(_fixture.ReadOnlyDbf.IsFoxPro);
     }
 
     [Fact]
-    public void Dbf_HasDbtMemo_IsCorrect()
+    public void Return_false_for_HasDbtMemo()
     {
         Assert.False(_fixture.ReadOnlyDbf.HasDbtMemo);
     }
 
     [Fact]
-    public void Dbf_HasDosMemo_IsCorrect()
+    public void Return_false_for_HasDosMemo()
     {
         Assert.False(_fixture.ReadOnlyDbf.HasDosMemo);
     }
 
     [Fact]
-    public void Dbf_RecordCount_IsCorrect()
+    public void Return_14_for_RecordCount()
     {
         Assert.Equal(14, _fixture.ReadOnlyDbf.RecordCount);
     }
 
     [Fact]
-    public void Dbf_FieldCount_IsCorrect()
+    public void Return_31_for_FieldCount()
     {
         Assert.Equal(31, _fixture.ReadOnlyDbf.RecordDescriptor.Count);
     }
 
     [Fact]
-    public void Dbf_RecordDescriptor_IsValid()
+    public void Have_expected_record_schema()
     {
         Assert.Equal(_fixture.ReadOnlySchema, _fixture.ReadOnlyDbf.RecordDescriptor);
     }
 
     [Fact]
-    public void Dbf_Read_RecordValues_AreValid()
+    public void Read_values_correctly()
     {
         for (int i = 0; i < _fixture.ReadOnlyDbf.RecordCount; i++)
         {
@@ -67,7 +67,7 @@ public sealed class Dbf03Tests : IClassFixture<Dbf03Fixture>
     }
 
     [Fact]
-    public void Dbf_Write_RecordValues_AreValid() => this.WithTempDirectory(dir =>
+    public void Write_values_correctly() => this.WithTempDirectory(dir =>
     {
         var fileName = Path.Combine(dir, "03.dbf");
         using var dbf = new Dbf(fileName, _fixture.ReadOnlySchema);

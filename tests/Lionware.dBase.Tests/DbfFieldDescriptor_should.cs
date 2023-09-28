@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Lionware.dBase;
 
-public sealed class DbfFieldDescriptorTests : IClassFixture<DbfFieldDescriptorFixture>
+public sealed class DbfFieldDescriptor_should : IClassFixture<DbfFieldDescriptorFixture>
 {
     private static readonly Dictionary<DbfFieldDescriptor, object?> Values = new()
     {
@@ -23,7 +23,7 @@ public sealed class DbfFieldDescriptorTests : IClassFixture<DbfFieldDescriptorFi
     };
     private readonly DbfFieldDescriptorFixture _fixture;
 
-    public DbfFieldDescriptorTests(DbfFieldDescriptorFixture fixture)
+    public DbfFieldDescriptor_should(DbfFieldDescriptorFixture fixture)
     {
         _fixture = fixture;
     }
@@ -70,7 +70,7 @@ public sealed class DbfFieldDescriptorTests : IClassFixture<DbfFieldDescriptorFi
 
     [Theory]
     [MemberData(nameof(GetValuesWithSourceData))]
-    public void DbfFieldDescriptor_Read_ReadsFields(DbfFieldDescriptor descriptor, byte[] source, object? expectedValue)
+    public void Read_fields(DbfFieldDescriptor descriptor, byte[] source, object? expectedValue)
     {
         Debug.WriteLine($"{expectedValue?.GetType().Name ?? nameof(Object)}: {expectedValue}");
         var field = descriptor.CreateReader().Invoke(source, _fixture.DbfContext);

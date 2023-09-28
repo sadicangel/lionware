@@ -2,7 +2,7 @@ using System.Reflection;
 
 namespace Lionware.dBase;
 
-public sealed class DbfFieldTests
+public sealed class DbfField_should
 {
     private static readonly object[][] ValidValues = new object[][]
     {
@@ -25,7 +25,7 @@ public sealed class DbfFieldTests
 
     [Theory]
     [MemberData(nameof(GetValidValuesData))]
-    public void DbfField_Constructor_ConstructsValue(Delegate @delegate, object value)
+    public void Construct_from_value(Delegate @delegate, object value)
     {
         Assert.Null(Record.Exception(() => @delegate.DynamicInvoke(new object[] { value })));
     }
@@ -34,7 +34,7 @@ public sealed class DbfFieldTests
 
     [Theory]
     [MemberData(nameof(GetValidValuesData))]
-    public void DbfField_GetValue_GetsCorrectObjectValue(Delegate @delegate, object value)
+    public void Get_correct_object_value(Delegate @delegate, object value)
     {
         var field = (DbfField)@delegate.DynamicInvoke(new object[] { value })!;
         Assert.Equal(value, field.Value);
@@ -42,7 +42,7 @@ public sealed class DbfFieldTests
 
     [Theory]
     [MemberData(nameof(GetValidValuesWithTypeData))]
-    public void DbfField_GetValue_GetsCorrectGenericValue(Delegate @delegate, object value, Type type)
+    public void Gets_correct_generic_value(Delegate @delegate, object value, Type type)
     {
         var field = (DbfField)@delegate.DynamicInvoke(new object[] { value })!;
         var generic = GetValueMethod.MakeGenericMethod(type);
@@ -54,7 +54,7 @@ public sealed class DbfFieldTests
 
     [Theory]
     [MemberData(nameof(GetValidValuesWithTypeData))]
-    public void DbfField_GetValue_GetsCorrectSpecificValue(Delegate @delegate, object value, Type type)
+    public void Get_correct_specific_value(Delegate @delegate, object value, Type type)
     {
         var field = (DbfField)@delegate.DynamicInvoke(new object[] { value })!;
         var method = typeof(DbfField).GetMethod($"Get{type.Name}");
@@ -65,7 +65,7 @@ public sealed class DbfFieldTests
 
     [Theory]
     [MemberData(nameof(GetValidValuesWithTypeData))]
-    public void DbfField_GetValueOrDefault_GetsCorrectDefaultValue(Delegate @delegate, object defaultValue, Type type)
+    public void Get_correct_default_value(Delegate @delegate, object defaultValue, Type type)
     {
         _ = @delegate;
         var field = new DbfField();

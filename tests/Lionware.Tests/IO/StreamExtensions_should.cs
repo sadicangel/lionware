@@ -3,10 +3,10 @@
 /// <summary>
 /// Extensions for <see cref="Stream" />.
 /// </summary>s
-public sealed class StreamExtensionsTests
+public sealed class StreamExtensions_should
 {
     [Fact]
-    public void Stream_InsertRange_InsertsBytesAtStart()
+    public void Insert_range_at_start()
     {
         using var stream = new MemoryStream();
         stream.Write(stackalloc byte[8] { 2, 3, 4, 5, 6, 7, 8, 9 });
@@ -20,7 +20,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_InsertRange_InsertsBytesInMiddle()
+    public void Insert_range_in_middle()
     {
         using var stream = new MemoryStream();
         stream.Write(stackalloc byte[8] { 0, 1, 2, 3, 6, 7, 8, 9 });
@@ -34,7 +34,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_InsertRange_InsertsBytesInMiddle_Big()
+    public void Insert_range_bigger_than_default_in_middle()
     {
         const int size = 8 * 1234;
 
@@ -65,7 +65,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_InsertRange_InsertsBytesAtEnd()
+    public void Insert_range_at_end()
     {
         using var stream = new MemoryStream();
         stream.Write(stackalloc byte[8] { 0, 1, 2, 3, 4, 5, 6, 7 });
@@ -79,7 +79,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_InsertRange_ThrowsIfStartAfterEnd()
+    public void Throw_if_insert_range_starts_after_stream_end()
     {
         using var stream = new MemoryStream();
 
@@ -87,7 +87,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_RemoveRange_RemovesBytesAtStart()
+    public void Remove_range_at_start()
     {
         using var stream = new MemoryStream(Enumerable.Range(0, 10).Select(i => (byte)i).ToArray());
 
@@ -100,7 +100,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_RemoveRange_RemovesBytesInMiddle()
+    public void Remove_range_in_middle()
     {
         using var stream = new MemoryStream(Enumerable.Range(0, 10).Select(i => (byte)i).ToArray());
 
@@ -113,7 +113,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_RemoveRange_RemovesBytesInMiddle_Big()
+    public void Remove_range_bigger_than_default_in_middle()
     {
         const int size = 8 * 1234;
         const int offset = 128 * 10;
@@ -137,7 +137,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_RemoveRange_RemovesBytesAtEnd()
+    public void Remove_range_at_end()
     {
         using var stream = new MemoryStream(Enumerable.Range(0, 10).Select(i => (byte)i).ToArray());
 
@@ -150,7 +150,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_RemoveRange_IgnoresIfRangeAfterEnd()
+    public void Ignore_remove_range_if_after_stream_end()
     {
         using var stream = new MemoryStream(Enumerable.Range(0, 10).Select(i => (byte)i).ToArray());
 
@@ -163,7 +163,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_RemoveRange_ThrowsIfStartAfterEnd()
+    public void Throw_if_remove_range_start_is_after_stream_end()
     {
         using var stream = new MemoryStream();
 
@@ -171,7 +171,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_RemoveRange_ThrowsIfRangeAfterEnd()
+    public void Throw_if_remove_range_starts_after_stream_end()
     {
         using var stream = new MemoryStream();
 
@@ -179,7 +179,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_RemoveRange_ThrowsIfBytesLengthAfterEnd()
+    public void Throw_if_range_end_is_after_stream_end()
     {
         using var stream = new MemoryStream();
 
@@ -187,7 +187,7 @@ public sealed class StreamExtensionsTests
     }
 
     [Fact]
-    public void Stream_RemoveRange_ThrowsIfRangeLengthAfterEnd()
+    public void Throw_if_range_ends_after_stream_end()
     {
         using var stream = new MemoryStream();
 

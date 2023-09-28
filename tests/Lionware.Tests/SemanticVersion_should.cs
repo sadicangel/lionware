@@ -2,7 +2,7 @@
 using System.Text.Json;
 
 namespace Lionware;
-public sealed class SemanticVersionTests
+public sealed class SemanticVersion_should
 {
     private static readonly string[] ValidVersions = new string[]
     {
@@ -88,53 +88,53 @@ public sealed class SemanticVersionTests
 
     [Theory]
     [MemberData(nameof(GetValidVersionsData))]
-    public void SemanticVersion_Constructor_ConstructsValidVersion(string version) =>
+    public void Construct_valid_version(string version) =>
         Assert.Null(Record.Exception(() => new SemanticVersion(version)));
 
     [Theory]
     [MemberData(nameof(GetInvalidVersionsData))]
-    public void SemanticVersion_Constructor_ThrowsOnInvalidVersion(string version) =>
+    public void Throw_on_invalid_version(string version) =>
         Assert.Throws<ArgumentException>(() => new SemanticVersion(version));
 
     [Fact]
-    public void SemanticVersion_Constructor_ThrowsOnNull() =>
+    public void Throw_on_null() =>
         Assert.Throws<ArgumentNullException>(() => new SemanticVersion(null!));
 
     [Theory]
     [InlineData(-1, 0, 0)]
     [InlineData(0, -1, 0)]
     [InlineData(0, 0, -1)]
-    public void SemanticVersion_Constructor_ThrowsOnNegativeNumbers(int major, int minor, int patch) =>
+    public void Throw_on_negative_numbers(int major, int minor, int patch) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => new SemanticVersion(major, minor, patch));
 
     [Theory]
     [MemberData(nameof(GetValidVersionsData))]
-    public void SemanticVersion_Parse_ParsesValidString(string version) =>
+    public void Parse_valid_string(string version) =>
         Assert.Null(Record.Exception(() => new SemanticVersion(version)));
 
     [Theory]
     [MemberData(nameof(GetInvalidVersionsData))]
-    public void SemanticVersion_Parse_ThrowsOnInvalidVersion(string version) =>
+    public void Throw_when_parsing_invalid_version(string version) =>
         Assert.Throws<FormatException>(() => SemanticVersion.Parse(version));
 
     [Fact]
-    public void SemanticVersion_Parse_ThrowsOnNull() =>
+    public void Throw_when_parsing_null() =>
         Assert.Throws<ArgumentNullException>(() => SemanticVersion.Parse(null!));
 
     [Theory]
     [MemberData(nameof(GetValidVersionsData))]
-    public void SemanticVersion_TryParse_IsTrueOnValidString(string version) => Assert.True(SemanticVersion.TryParse(version, out _));
+    public void Return_true_when_parsing_valid_string(string version) => Assert.True(SemanticVersion.TryParse(version, out _));
 
     [Theory]
     [InlineData(null)]
     [MemberData(nameof(GetInvalidVersionsData))]
-    public void SemanticVersion_TryParse_IsFalseOnInvalidString(string version) => Assert.False(SemanticVersion.TryParse(version, out _));
+    public void Return_false_when_parsing_invalid_string(string version) => Assert.False(SemanticVersion.TryParse(version, out _));
 
     [Theory]
     [InlineData("1.2.3", "1.2.3")]
     [InlineData("1.2.3-preview.4", "1.2.3-preview.4")]
     [InlineData("1.2.3-preview.4", "1.2.3-preview.4+sum-data")]
-    public void SemanticVersion_Equals_IsTrueWhenVersionsAreEqual(string v1, string v2)
+    public void Return_true_when_versions_are_equal(string v1, string v2)
     {
         var a = new SemanticVersion(v1);
         var b = new SemanticVersion(v2);
@@ -145,7 +145,7 @@ public sealed class SemanticVersionTests
     [InlineData("1.2.3", "1.2.4")]
     [InlineData("1.2.3-preview.4", "1.2.3")]
     [InlineData("1.2.3-preview.4", "1.2.3-preview.5")]
-    public void SemanticVersion_Equals_IsFalseWhenVersionsAreNotEqual(string v1, string v2)
+    public void Return_false_when_versions_are_not_equal(string v1, string v2)
     {
         var a = new SemanticVersion(v1);
         var b = new SemanticVersion(v2);
@@ -153,7 +153,7 @@ public sealed class SemanticVersionTests
     }
 
     [Fact]
-    public void SemanticVersion_CompareTo_ComparesCorrectly()
+    public void Compare_versions_correctly()
     {
         var ascStr = new string[] { "1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0" };
 
@@ -172,7 +172,7 @@ public sealed class SemanticVersionTests
 
     [Theory]
     [MemberData(nameof(GetValidVersionsData))]
-    public void SemanticVersion_Json_Roundtrips([StringSyntax(StringSyntaxAttribute.Json)] string json)
+    public void Roundtrip_json([StringSyntax(StringSyntaxAttribute.Json)] string json)
     {
         json = '"' + json + '"';
         var version = JsonSerializer.Deserialize<SemanticVersion>(json);
