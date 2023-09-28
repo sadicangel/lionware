@@ -5,7 +5,7 @@ namespace Lionware.dBase;
 
 internal sealed class DbfMemoFileV3 : DbfMemoFile
 {
-    internal DbfMemoFileV3(Stream stream) : base(stream) { }
+    internal DbfMemoFileV3(Stream stream, bool writeHeader) : base(stream, DefaultBlockSize, writeHeader) { }
 
     public override string this[int index]
     {
@@ -13,17 +13,21 @@ internal sealed class DbfMemoFileV3 : DbfMemoFile
         {
             Stream.Position = BlockSize * index;
             var writer = new ArrayBufferWriter<byte>(BlockSize);
-            var done = false;
-            while (!done)
+            var i = -1;
+            while (i < 0)
             {
                 var buffer = writer.GetSpan(BlockSize)[..BlockSize];
                 var bytesRead = Stream.Read(buffer);
-                var i = buffer[..bytesRead].IndexOf(FieldEndMarker);
-                if (i >= 0)
+                if (bytesRead > 0)
                 {
-                    buffer = buffer[..i];
-                    bytesRead = i;
-                    done = true;
+                    i = buffer[..bytesRead].IndexOf(FieldEndMarker);
+                    if (i >= 0)
+                        bytesRead = i;
+                }
+                else
+                {
+                    // We reached EOF.
+                    i = 0;
                 }
                 writer.Advance(bytesRead);
             }
@@ -43,8 +47,27 @@ internal sealed class DbfMemoFileV3 : DbfMemoFile
         writer.Advance(paddingBytes);
 
         var index = (int)(Stream.Length / BlockSize);
-        Stream.Position = Stream.Length;
+
         Stream.Write(writer.WrittenSpan);
+
+        return index;
+    }
+
+    protected override int WriteHeader()
+    {
+        if (Stream.Length != 0)
+            throw new InvalidOperationException("Can only write header on a new memo file.");
+
+        Stream.SetLength(DefaultBlockSize);
+
+        var index = (int)(Stream.Length / BlockSize);
+
+        if (index * BlockSize != Stream.Length)
+            Stream.SetLength(index * BlockSize);
+
+        UpdateBlockSize(BlockSize);
+        UpdateNextAvailableIndex(index);
+        Stream.Position = Stream.Length;
         return index;
     }
 }

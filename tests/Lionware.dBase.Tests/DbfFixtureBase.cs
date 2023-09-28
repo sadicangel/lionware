@@ -1,21 +1,22 @@
 ﻿using CsvHelper;
 using CsvHelper.Configuration;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 
 namespace Lionware.dBase;
 
-public abstract class DbfTestsBase : IDisposable
+public abstract class DbfFixtureBase : IDisposable
 {
-    protected string DbfFileName { get; }
-    protected string SchemaFileName { get; }
-    protected string ValuesFileName { get; }
+    private bool _disposedValue;
 
-    protected Dbf ReadOnlyDbf { get; }
-    protected DbfRecordDescriptor ReadOnlySchema { get; }
-    protected IReadOnlyList<string[]> ReadOnlyValues { get; }
+    public string DbfFileName { get; }
+    public string SchemaFileName { get; }
+    public string ValuesFileName { get; }
 
-    protected DbfTestsBase(string dbfFileName)
+    public Dbf ReadOnlyDbf { get; }
+    public DbfRecordDescriptor ReadOnlySchema { get; }
+    public IReadOnlyList<string[]> ReadOnlyValues { get; }
+
+    protected DbfFixtureBase(string dbfFileName)
     {
         DbfFileName = dbfFileName;
         SchemaFileName = Path.ChangeExtension(dbfFileName, ".txt");
@@ -80,20 +81,23 @@ public abstract class DbfTestsBase : IDisposable
         }
     }
 
-    public void Dispose() => ReadOnlyDbf.Dispose();
-
-    public void WithTempDirectory(Action<string> action, [CallerMemberName] string memberName = "")
+    protected virtual void Dispose(bool disposing)
     {
-        var directory = Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), GetUniqueName(memberName)));
-        try
+        if (!_disposedValue)
         {
-            action(directory.FullName);
-        }
-        finally
-        {
-            directory.Delete(recursive: true);
-        }
+            if (disposing)
+            {
+                ReadOnlyDbf.Dispose();
+            }
 
-        string GetUniqueName([CallerMemberName] string memberName = "") => $"{GetType().Name}_{memberName}";
+            _disposedValue = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        // Do not change this code. Put clean-up code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
     }
 }

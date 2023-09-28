@@ -3,10 +3,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Lionware.dBase;
-public sealed class DbfFieldDescriptorTests
-{
-    private static readonly IDbfContext DbfContext = new DbfContextImpl();
 
+public sealed class DbfFieldDescriptorTests : IClassFixture<DbfFieldDescriptorFixture>
+{
     private static readonly Dictionary<DbfFieldDescriptor, object?> Values = new()
     {
         [DbfFieldDescriptor.Logical("logical")] = true,
@@ -22,6 +21,12 @@ public sealed class DbfFieldDescriptorTests
         [DbfFieldDescriptor.Binary("binary", 50)] = null,
         [DbfFieldDescriptor.Ole("ole", 50)] = null,
     };
+    private readonly DbfFieldDescriptorFixture _fixture;
+
+    public DbfFieldDescriptorTests(DbfFieldDescriptorFixture fixture)
+    {
+        _fixture = fixture;
+    }
 
     public static IEnumerable<object?[]> GetValuesWithSourceData()
     {
@@ -68,14 +73,7 @@ public sealed class DbfFieldDescriptorTests
     public void DbfFieldDescriptor_Read_ReadsFields(DbfFieldDescriptor descriptor, byte[] source, object? expectedValue)
     {
         Debug.WriteLine($"{expectedValue?.GetType().Name ?? nameof(Object)}: {expectedValue}");
-        var field = descriptor.CreateReader().Invoke(source, DbfContext);
+        var field = descriptor.CreateReader().Invoke(source, _fixture.DbfContext);
         Assert.Equal(expectedValue, field.Value);
     }
-}
-
-file sealed record class DbfContextImpl : IDbfContext
-{
-    public Encoding Encoding { get => Encoding.ASCII; }
-    public char DecimalSeparator { get => '.'; }
-    public DbfMemoFile? MemoFile { get; }
 }

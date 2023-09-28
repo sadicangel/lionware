@@ -1,4 +1,5 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Lionware.dBase;
 
@@ -22,10 +23,12 @@ public abstract class DbfMemoFile : IDisposable
 
     private bool _disposedValue;
 
-    internal DbfMemoFile(Stream stream, ushort blockSize = DefaultBlockSize)
+    internal DbfMemoFile(Stream stream, ushort blockSize, bool writeHeader)
     {
         Stream = stream ?? throw new ArgumentNullException(nameof(stream));
         BlockSize = blockSize;
+        if (writeHeader)
+            WriteHeader();
     }
 
     /// <summary>
@@ -71,11 +74,43 @@ public abstract class DbfMemoFile : IDisposable
     public abstract string this[int index] { get; }
 
     /// <summary>
-    /// Appends a new memo at the end of the file and returns it's index.
+    /// Appends a new memo at the end of the file and returns its index.
     /// </summary>
     /// <param name="memo">The memo to be appended.</param>
     /// <returns>The index of the appended memo.</returns>
     public abstract int Append(string memo);
+
+    /// <summary>
+    /// Writes the header of the memo file an returns the first free index.
+    /// </summary>
+    /// <returns>The next free index to be written with memo data.</returns>
+    protected abstract int WriteHeader();
+
+    /// <summary>
+    /// Updates the next available index.
+    /// </summary>
+    protected void UpdateBlockSize(ushort blockSize)
+    {
+        var position = Stream.Position;
+        Stream.Position = 0;
+        Span<byte> u16 = stackalloc byte[sizeof(ushort)];
+        BinaryPrimitives.WriteUInt16LittleEndian(u16, blockSize);
+        Stream.Write(u16);
+        Stream.Position = position;
+    }
+
+    /// <summary>
+    /// Updates the next available index.
+    /// </summary>
+    protected void UpdateNextAvailableIndex(int index)
+    {
+        var position = Stream.Position;
+        Stream.Position = 0;
+        Span<byte> u32 = stackalloc byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(u32, (uint)index);
+        Stream.Write(u32);
+        Stream.Position = position;
+    }
 
     internal static bool TryOpen(Dbf dbf, [MaybeNullWhen(false)] out DbfMemoFile memoFile)
     {
@@ -87,7 +122,7 @@ public abstract class DbfMemoFile : IDisposable
 
         memoFile = dbf.Version switch
         {
-            0x83 => new DbfMemoFileV3(new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite)),
+            0x83 => new DbfMemoFileV3(new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite), writeHeader: false),
             _ => throw new NotSupportedException($"Memo file for {dbf.VersionDescription}")
         };
 
@@ -97,17 +132,11 @@ public abstract class DbfMemoFile : IDisposable
     internal static DbfMemoFile Create(Dbf dbf)
     {
         var fileName = Path.ChangeExtension(dbf.FileName, ".dbt");
-        return dbf.Version switch
+        var memoFile = dbf.Version switch
         {
-            0x83 => new DbfMemoFileV3(CreateStream(fileName)),
+            0x83 => new DbfMemoFileV3(new FileStream(fileName, FileMode.CreateNew, FileAccess.ReadWrite), writeHeader: true),
             _ => throw new NotSupportedException($"Memo file for {dbf.VersionDescription}")
         };
-
-        static Stream CreateStream(string fileName)
-        {
-            var stream = new FileStream(fileName, FileMode.CreateNew, FileAccess.ReadWrite);
-            stream.SetLength(DefaultBlockSize);
-            return stream;
-        }
+        return memoFile;
     }
 }
