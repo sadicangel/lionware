@@ -40,13 +40,13 @@ public sealed class Dbf83_should : IClassFixture<Dbf83Fixture>
     [Fact]
     public void Return_15_for_FieldCount()
     {
-        Assert.Equal(15, _fixture.ReadOnlyDbf.RecordDescriptor.Count);
+        Assert.Equal(15, _fixture.ReadOnlyDbf.Schema.FieldCount);
     }
 
     [Fact]
     public void Have_expected_record_schema()
     {
-        Assert.Equal(_fixture.ReadOnlySchema, _fixture.ReadOnlyDbf.RecordDescriptor);
+        Assert.Equal(_fixture.ReadOnlySchema, _fixture.ReadOnlyDbf.Schema);
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public sealed class Dbf83_should : IClassFixture<Dbf83Fixture>
         {
             var record = _fixture.ReadOnlyDbf[i];
             var values = _fixture.ReadOnlyValues[i];
-            for (int j = 0; j < record.FieldCount; j++)
+            for (int j = 0; j < record.Count; j++)
             {
                 var actual = record[j].ToString();
                 var expected = values[j];
@@ -74,18 +74,17 @@ public sealed class Dbf83_should : IClassFixture<Dbf83Fixture>
         using var dbf = new Dbf(fileName, _fixture.ReadOnlySchema);
         foreach (var csvRecord in _fixture.ReadOnlyValues)
         {
-            var fields = new DbfField[csvRecord.Length];
+            var fields = new object?[csvRecord.Length];
             for (int i = 0; i < csvRecord.Length; ++i)
                 fields[i] = _fixture.ReadOnlySchema[i].ParseField(csvRecord[i]);
-            var record = new DbfRecord(fields);
-            dbf.Add(in record);
+            dbf.Add(fields);
         }
 
         for (int i = 0; i < dbf.RecordCount; i++)
         {
             var record = dbf[i];
             var values = _fixture.ReadOnlyValues[i];
-            for (int j = 0; j < record.FieldCount; j++)
+            for (int j = 0; j < record.Count; j++)
             {
                 var expected = values[j];
                 Debug.WriteLine($"{_fixture.ReadOnlySchema[j].NameString}: {expected}");

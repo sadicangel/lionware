@@ -26,7 +26,7 @@ internal sealed class DbfMemoFileV3 : DbfMemoFile
                 }
                 else
                 {
-                    // We reached EOF.
+                    // We reached EOF. Throw?
                     i = 0;
                 }
                 writer.Advance(bytesRead);
@@ -46,9 +46,12 @@ internal sealed class DbfMemoFileV3 : DbfMemoFile
         writer.GetSpan(paddingBytes)[..paddingBytes].Clear();
         writer.Advance(paddingBytes);
 
-        var index = (int)(Stream.Length / BlockSize);
+        var index = NextAvailableIndex;
 
+        Stream.Position = index * BlockSize;
         Stream.Write(writer.WrittenSpan);
+
+        UpdateNextAvailableIndex((int)(Stream.Position / BlockSize));
 
         return index;
     }

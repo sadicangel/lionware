@@ -44,6 +44,11 @@ public abstract class DbfMemoFile : IDisposable
     /// </remarks>
     protected ushort BlockSize { get; }
 
+    /// <summary>
+    /// Gets the index of the next block that is available to write.
+    /// </summary>
+    internal protected int NextAvailableIndex { get; private set; }
+
     /// <inheritdoc cref="IDisposable.Dispose"/>
     protected virtual void Dispose(bool disposing)
     {
@@ -110,6 +115,7 @@ public abstract class DbfMemoFile : IDisposable
         BinaryPrimitives.WriteUInt32BigEndian(u32, (uint)index);
         Stream.Write(u32);
         Stream.Position = position;
+        NextAvailableIndex = index;
     }
 
     internal static bool TryOpen(Dbf dbf, [MaybeNullWhen(false)] out DbfMemoFile memoFile)

@@ -13,7 +13,7 @@ public abstract class DbfFixtureBase : IDisposable
     public string ValuesFileName { get; }
 
     public Dbf ReadOnlyDbf { get; }
-    public DbfRecordDescriptor ReadOnlySchema { get; }
+    public DbfSchema ReadOnlySchema { get; }
     public IReadOnlyList<string[]> ReadOnlyValues { get; }
 
     protected DbfFixtureBase(string dbfFileName)
@@ -22,35 +22,35 @@ public abstract class DbfFixtureBase : IDisposable
         SchemaFileName = Path.ChangeExtension(dbfFileName, ".txt");
         ValuesFileName = Path.ChangeExtension(dbfFileName, ".csv");
         ReadOnlyDbf = new Dbf(dbfFileName);
-        ReadOnlySchema = new DbfRecordDescriptor(File.ReadLines(SchemaFileName).Select(ReadFieldDescriptor).ToArray());
+        ReadOnlySchema = new DbfSchema(File.ReadLines(SchemaFileName).Select(ReadFieldDescriptor).ToArray());
         using var stream = new StreamReader(ValuesFileName);
         using var reader = new CsvReader(stream, new CsvConfiguration(CultureInfo.InvariantCulture));
 
-        var fieldCount = ReadOnlySchema.Count;
+        var fieldCount = ReadOnlySchema.FieldCount;
         if (reader.HeaderRecord is null)
             reader.Read();
 
         var readOnlyValues = new List<string[]>();
 
-        var formatters = new Func<string, string>[ReadOnlySchema.Count];
+        var formatters = new Func<string, string>[fieldCount];
         for (int i = 0; i < formatters.Length; ++i)
         {
             ref readonly var descriptor = ref ReadOnlySchema[i];
             var @decimal = descriptor.Decimal;
             formatters[i] = descriptor.Type switch
             {
-                DbfFieldType.Character => str => str ?? String.Empty,
-                DbfFieldType.Numeric or
-                DbfFieldType.Float or
-                DbfFieldType.Int32 or
-                DbfFieldType.Double or
-                DbfFieldType.AutoIncrement => str => String.IsNullOrEmpty(str) ? String.Empty : Convert.ToDouble(str).ToString($"F{@decimal}"),
-                DbfFieldType.Date or
-                DbfFieldType.Timestamp => str => str ?? String.Empty,
-                DbfFieldType.Logical => str => str ?? String.Empty,
-                DbfFieldType.Memo or
-                DbfFieldType.Binary or
-                DbfFieldType.Ole => str => String.IsNullOrEmpty(str) ? String.Empty : OperatingSystem.IsWindows() ? str : str.Replace(Environment.NewLine, "\r\n"),
+                DbfType.Character => str => str ?? String.Empty,
+                DbfType.Numeric or
+                DbfType.Float or
+                DbfType.Int32 or
+                DbfType.Double or
+                DbfType.AutoIncrement => str => String.IsNullOrEmpty(str) ? String.Empty : Convert.ToDouble(str).ToString($"F{@decimal}"),
+                DbfType.Date or
+                DbfType.Timestamp => str => str ?? String.Empty,
+                DbfType.Logical => str => str ?? String.Empty,
+                DbfType.Memo or
+                DbfType.Binary or
+                DbfType.Ole => str => String.IsNullOrEmpty(str) ? String.Empty : OperatingSystem.IsWindows() ? str : str.Replace(Environment.NewLine, "\r\n"),
                 _ => throw new NotImplementedException(),
             };
         }
@@ -74,7 +74,7 @@ public abstract class DbfFixtureBase : IDisposable
             var contents = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             return new DbfFieldDescriptor(
                 name: contents[0],
-                type: (DbfFieldType)(byte)Char.Parse(contents[1]),
+                type: (DbfType)(byte)Char.Parse(contents[1]),
                 length: Byte.Parse(contents[2]),
                 @decimal: Byte.Parse(contents[3])
             );

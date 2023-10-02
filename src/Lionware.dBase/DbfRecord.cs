@@ -1,62 +1,70 @@
-﻿using System.Diagnostics;
+﻿using System.Collections;
 
 namespace Lionware.dBase;
 
 /// <summary>
+/// Describes the status of a <see cref="DbfRecord"/>.
+/// </summary>
+public enum DbfRecordStatus : byte
+{
+    /// <summary>
+    /// The record is valid.
+    /// </summary>
+    Valid = 0x20,
+    /// <summary>
+    /// The record is flagged for removal.
+    /// </summary>
+    Deleted = 0x2A
+}
+
+/// <summary>
 /// Represents a record of a <see cref="Dbf" />.
 /// </summary>
-/// <remarks>
-/// The record if defined by a <see cref="DbfRecordDescriptor" />.
-/// </remarks>
-[DebuggerDisplay("{" + nameof(GetDebuggerDisplay) + "(),nq}")]
-public readonly record struct DbfRecord : IEquatable<DbfRecord>
+public sealed class DbfRecord : IReadOnlyList<object?>
 {
-    // Encodes the byte that describes the status of a record.
-    internal enum Status : byte { Valid = 0x20, Deleted = 0x2A }
-
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private readonly DbfField[] _fields;
-
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private readonly Status _status;
+    private readonly Dbf _dbf;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DbfRecord" /> class.
     /// </summary>
-    /// <param name="fields">The record fields.</param>
     /// <exception cref="ArgumentNullException">fields</exception>
-    public DbfRecord(params DbfField[] fields) : this(Status.Valid, fields) { }
-
-    internal DbfRecord(Status status, params DbfField[] fields)
+    internal DbfRecord(Dbf dbf, int index)
     {
-        Ensure.NotNull(fields);
+        Ensure.NotNull(dbf);
+        Ensure.GreaterThanOrEqualTo(index, 0);
 
-        _status = status;
-        _fields = fields;
+        _dbf = dbf;
+        Index = index;
     }
 
     /// <summary>
-    /// Returns an empty <see cref="DbfRecord"/>.
+    /// Gets the index of the record within the <see cref="Dbf"/>.
     /// </summary>
-    public static readonly DbfRecord Empty = new(Array.Empty<DbfField>());
+    public int Index { get; }
 
     /// <summary>
-    /// Gets the number of <see cref="DbfField" /> elements.
+    /// Gets the <see cref="DbfRecordStatus"/> of the record.
     /// </summary>
-    internal Status RecordStatus { get => _status; init => _status = value; }
+    public DbfRecordStatus Status { get => _dbf.ReadRecordStatus(Index); set => _dbf.WriteRecordStatus(Index, value); }
+
+    /// <inheritdoc/>
+    public int Count { get; }
 
     /// <summary>
-    /// Gets the number of <see cref="DbfField" /> elements.
+    /// Gets or sets the value of the field at the specified index.
     /// </summary>
-    public int FieldCount => _fields.Length;
+    public object? this[int index] { get => _dbf[Index, index]; set => _dbf[Index, index] = value; }
 
     /// <summary>
-    /// Gets the <see cref="DbfField"/> at the specified index.
+    /// Gets or sets the value of the field with the specified name.
     /// </summary>
-    public ref readonly DbfField this[int index] { get => ref _fields[index]; }
+    public object? this[string name] { get => _dbf[Index, name]; set => _dbf[Index, name] = value; }
 
-    /// <inheritdoc cref="IEnumerable{T}.GetEnumerator"/>
-    public Enumerator GetEnumerator() => new(_fields);
+    public T GetValue<T>(int index) => (T)this[index];
+    public T GetValue<T>(string name) => (T)this[name];
+
+    public void SetValue<T>(int index, T? value) => this[index] = value;
+    public void SetValue<T>(string name, T? value) => this[name] = value;
 
     /// <summary>
     /// Indicates whether the current object is equal to another object of the same type.
@@ -65,11 +73,7 @@ public readonly record struct DbfRecord : IEquatable<DbfRecord>
     /// <returns>
     ///   <see langword="true" /> if the current object is equal to the <paramref name="other" /> parameter; otherwise, <see langword="false" />.
     /// </returns>
-    public bool Equals(DbfRecord other)
-    {
-        return _status == other._status
-            && _fields.SequenceEqual(other._fields);
-    }
+    public bool Equals(DbfRecord other) => Index == other.Index;
 
     /// <summary>
     /// Returns a hash code for this instance.
@@ -78,62 +82,14 @@ public readonly record struct DbfRecord : IEquatable<DbfRecord>
     /// A hash code for this instance, suitable for use in hashing algorithms and data structures like a hash table. 
     /// </returns>
     /// <exception cref="NotImplementedException"></exception>
-    public override int GetHashCode()
+    public override int GetHashCode() => Index.GetHashCode();
+
+    /// <inheritdoc/>
+    public IEnumerator<object?> GetEnumerator()
     {
-        var hash = new HashCode();
-        hash.Add(_status);
-        foreach (var field in _fields)
-            hash.Add(field);
-        return hash.ToHashCode();
+        foreach (var value in _dbf.ReadRecordValues(Index))
+            yield return value;
     }
 
-    /// <summary>
-    /// Enumerates the elements of a <see cref="Span{T}" /> of <see cref="DbfField" />.
-    /// </summary>
-    public struct Enumerator
-    {
-        /// <summary>
-        /// The span being enumerated.
-        /// </summary>
-        private readonly DbfField[] _span;
-        /// <summary>
-        /// The next index to yield.
-        /// </summary>
-        private int _index;
-
-        /// <summary>
-        /// Initialize the enumerator.
-        /// </summary>
-        /// <param name="span">The span to enumerate.</param>
-        internal Enumerator(DbfField[] span)
-        {
-            _span = span;
-            _index = -1;
-        }
-
-        /// <summary>
-        /// Advances the enumerator to the next element of the span.
-        /// </summary>
-        /// <returns></returns>
-        public bool MoveNext()
-        {
-            int index = _index + 1;
-            if (index < _span.Length)
-            {
-                _index = index;
-                return true;
-            }
-            return false;
-        }
-
-        /// <summary>
-        /// Gets the element at the current position of the enumerator.
-        /// </summary>
-        public readonly ref readonly DbfField Current
-        {
-            get => ref _span[_index];
-        }
-    }
-
-    private string GetDebuggerDisplay() => $"{nameof(FieldCount)} = {FieldCount}";
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

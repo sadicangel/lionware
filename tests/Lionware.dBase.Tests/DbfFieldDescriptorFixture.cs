@@ -14,6 +14,19 @@ public sealed class DbfFieldDescriptorFixture : IDisposable
 
     internal IDbfContext DbfContext { get; }
 
+    public DbfFieldDescriptor CharacterDescriptor { get; } = DbfFieldDescriptor.Character("character", 50);
+    public DbfFieldDescriptor NumericDescriptor { get; } = DbfFieldDescriptor.Numeric("numeric", @decimal: 3);
+    public DbfFieldDescriptor FloatDescriptor { get; } = DbfFieldDescriptor.Float("float", @decimal: 3);
+    public DbfFieldDescriptor Int32Descriptor { get; } = DbfFieldDescriptor.Int32("int32");
+    public DbfFieldDescriptor DoubleDescriptor { get; } = DbfFieldDescriptor.Double("double");
+    public DbfFieldDescriptor AutoIncrementDescriptor { get; } = DbfFieldDescriptor.AutoIncrement("autoincrement");
+    public DbfFieldDescriptor DateDescriptor { get; } = DbfFieldDescriptor.Date("date");
+    public DbfFieldDescriptor TimestampDescriptor { get; } = DbfFieldDescriptor.Timestamp("timestamp");
+    public DbfFieldDescriptor LogicalDescriptor { get; } = DbfFieldDescriptor.Logical("logical");
+    public DbfFieldDescriptor MemoDescriptor { get; } = DbfFieldDescriptor.Memo("memo", 50);
+    public DbfFieldDescriptor BinaryDescriptor { get; } = DbfFieldDescriptor.Binary("binary", 50);
+    public DbfFieldDescriptor OleDescriptor { get; } = DbfFieldDescriptor.Ole("ole", 50);
+
     public void Dispose() => _memoFile.Dispose();
 }
 

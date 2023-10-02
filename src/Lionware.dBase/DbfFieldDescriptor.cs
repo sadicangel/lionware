@@ -1,14 +1,17 @@
 ﻿using System.Buffers;
+using System.Buffers.Binary;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Lionware.dBase;
+
+internal delegate object? DbfFieldReader(ReadOnlySpan<byte> source, IDbfContext context);
+internal delegate void DbfFieldWriter(object? field, Span<byte> target, IDbfContext context);
 
 /// <summary>
 /// Describes a <see cref="DbfField" />.
@@ -25,7 +28,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     [FieldOffset(10)]
     private readonly byte _zero; // '\0'
     [FieldOffset(11)]
-    private readonly DbfFieldType _type;
+    private readonly DbfType _type;
     [FieldOffset(12)]
     private readonly int _address; // in memory address.
     [FieldOffset(16)]
@@ -46,7 +49,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <param name="type">The type of the field.</param>
     /// <param name="length">The length of the field in bytes.</param>
     /// <param name="decimal">The number of characters allowed after the decimal separator.</param>
-    public DbfFieldDescriptor(string name, DbfFieldType type, byte length, byte @decimal)
+    public DbfFieldDescriptor(string name, DbfType type, byte length, byte @decimal)
     {
         NameString = name;
         Type = type;
@@ -84,7 +87,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <summary>
     /// Gets the type of the field.
     /// </summary>
-    public readonly DbfFieldType Type { get => _type; init => _type = value; }
+    public readonly DbfType Type { get => _type; init => _type = value; }
 
     /// <summary>
     /// Gets or sets the length of the field in binary (maximum 254).
@@ -176,38 +179,38 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     {
         switch (_type)
         {
-            case DbfFieldType.Character:
+            case DbfType.Character:
                 Unsafe.AsRef(in _length) = Clamp(_length, 1, 254);
                 Unsafe.AsRef(in _decimal) = 0;
                 break;
-            case DbfFieldType.Numeric:
-            case DbfFieldType.Float:
+            case DbfType.Numeric:
+            case DbfType.Float:
                 Unsafe.AsRef(in _length) = Clamp(_length, 1, 254);
                 Unsafe.AsRef(in _decimal) = Clamp(_decimal, 0, (byte)(_length - 1));
                 break;
-            case DbfFieldType.Memo:
-            case DbfFieldType.Binary:
-            case DbfFieldType.Ole:
+            case DbfType.Memo:
+            case DbfType.Binary:
+            case DbfType.Ole:
                 Unsafe.AsRef(in _length) = 10;
                 Unsafe.AsRef(in _decimal) = 0;
                 break;
-            case DbfFieldType.Double:
-            case DbfFieldType.Date:
-            case DbfFieldType.Timestamp:
+            case DbfType.Double:
+            case DbfType.Date:
+            case DbfType.Timestamp:
                 Unsafe.AsRef(in _length) = 8;
                 Unsafe.AsRef(in _decimal) = 0;
                 break;
-            case DbfFieldType.Int32:
-            case DbfFieldType.AutoIncrement:
+            case DbfType.Int32:
+            case DbfType.AutoIncrement:
                 Unsafe.AsRef(in _length) = 4;
                 Unsafe.AsRef(in _decimal) = 0;
                 break;
-            case DbfFieldType.Logical:
+            case DbfType.Logical:
                 Unsafe.AsRef(in _length) = 1;
                 Unsafe.AsRef(in _decimal) = 0;
                 break;
             default:
-                throw new InvalidEnumArgumentException(nameof(_type), (int)_type, typeof(DbfFieldType));
+                throw new InvalidEnumArgumentException(nameof(_type), (int)_type, typeof(DbfType));
         }
 
         static byte Clamp(byte val, byte min, byte max)
@@ -220,20 +223,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         }
     }
 
-    internal readonly bool NameEquals(ReadOnlySpan<char> name)
-    {
-        if (name.Length <= 0 || name.Length > 10)
-            return false;
-
-        Span<char> buffer = stackalloc char[10];
-        Encoding.ASCII.GetChars(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _name), 10), buffer);
-        buffer = buffer.Trim('\0');
-        return name.Equals(buffer, StringComparison.OrdinalIgnoreCase);
-    }
-
     private string GetDebuggerDisplay() => $"{NameString}, {(char)_type}, {_length}, {_decimal}";
-
-    internal DbfFieldMarshaller CreateMarshaller() => new(CreateReader(), CreateWriter());
 
     internal DbfFieldReader CreateReader()
     {
@@ -242,109 +232,55 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         var @decimal = Decimal;
         switch (Type)
         {
-            case DbfFieldType.Character:
+            case DbfType.Character:
                 return (source, context) =>
                 {
                     source = source.Trim("\0 "u8);
-                    return source.Length > 0 ? DbfField.Character(context.Encoding.GetString(source), length) : DbfField.Null(type, length, @decimal);
+                    return source.Length > 0 ? context.Encoding.GetString(source) : null;
                 };
 
-            case DbfFieldType.Memo when Length is 4:
+            case DbfType.Memo when Length is 4:
                 return (source, context) =>
                 {
                     if (context.MemoFile is null)
-                        return DbfField.Null(type, length, @decimal);
+                        return null;
 
-                    return DbfField.Memo(context.MemoFile[MemoryMarshal.Read<int>(source)], length);
+                    return context.MemoFile[BinaryPrimitives.ReadInt32LittleEndian(source)];
                 };
 
-            case DbfFieldType.Binary when Length is 4:
-                return (source, context) =>
-                {
-                    if (context.MemoFile is null)
-                        return DbfField.Null(type, length, @decimal);
-
-                    return DbfField.Binary(context.MemoFile[MemoryMarshal.Read<int>(source)], length);
-                };
-
-            case DbfFieldType.Ole when Length is 4:
-                return (source, context) =>
-                {
-                    if (context.MemoFile is null)
-                        return DbfField.Null(type, length, @decimal);
-
-                    return DbfField.Ole(context.MemoFile[MemoryMarshal.Read<int>(source)], length);
-                };
-
-            case DbfFieldType.Memo:
+            case DbfType.Memo:
                 return (source, context) =>
                 {
                     source = source.Trim("\0 "u8);
                     if (context.MemoFile is null || source.Length == 0)
-                        return DbfField.Null(type, length, @decimal);
+                        return null;
 
-                    Span<char> chars = stackalloc char[context.Encoding.GetMaxCharCount(source.Length)];
-                    context.Encoding.GetChars(source, chars);
-                    if (!int.TryParse(chars, out var index))
-                        return DbfField.Null(type, length, @decimal);
+                    if (!TryParseInt32(source, context.Encoding, out var index))
+                        return null;
 
-                    return DbfField.Memo(context.MemoFile[index], length);
+                    return context.MemoFile[index];
                 };
 
-            case DbfFieldType.Ole:
+            case DbfType.Ole:
+            case DbfType.Binary:
+                return (source, context) => null;
+
+            case DbfType.Numeric:
+            case DbfType.Float:
                 return (source, context) =>
                 {
                     source = source.Trim("\0 "u8);
-                    if (context.MemoFile is null || source.Length == 0)
-                        return DbfField.Null(type, length, @decimal);
-
-                    Span<char> chars = stackalloc char[context.Encoding.GetMaxCharCount(source.Length)];
-                    context.Encoding.GetChars(source, chars);
-                    if (!int.TryParse(chars, out var index))
-                        return DbfField.Null(type, length, @decimal);
-
-                    return DbfField.Ole(context.MemoFile[index], length);
+                    return source.Length > 0 ? ParseF64(source, NumberStyles.Float, context) : null;
                 };
 
-            case DbfFieldType.Binary:
-                return (source, context) =>
-                {
-                    source = source.Trim("\0 "u8);
-                    if (context.MemoFile is null || source.Length == 0)
-                        return DbfField.Null(type, length, @decimal);
+            case DbfType.Int32:
+            case DbfType.AutoIncrement:
+                return (source, context) => BinaryPrimitives.ReadInt32LittleEndian(source);
 
-                    Span<char> chars = stackalloc char[context.Encoding.GetMaxCharCount(source.Length)];
-                    context.Encoding.GetChars(source, chars);
-                    if (!int.TryParse(chars, out var index))
-                        return DbfField.Null(type, length, @decimal);
+            case DbfType.Double:
+                return (source, context) => BinaryPrimitives.ReadDoubleLittleEndian(source);
 
-                    return DbfField.Binary(context.MemoFile[index], length);
-                };
-
-            case DbfFieldType.Numeric:
-                return (source, context) =>
-                {
-                    source = source.Trim("\0 "u8);
-                    return source.Length > 0 ? DbfField.Numeric(Parse<double>(source, NumberStyles.Float, context), length, @decimal) : DbfField.Null(type, length, @decimal);
-                };
-
-            case DbfFieldType.Float:
-                return (source, context) =>
-                {
-                    source = source.Trim("\0 "u8);
-                    return source.Length > 0 ? DbfField.Float(Parse<double>(source, NumberStyles.Float, context), length, @decimal) : DbfField.Null(type, length, @decimal);
-                };
-
-            case DbfFieldType.Int32:
-                return (source, context) => DbfField.Int32(MemoryMarshal.Read<int>(source));
-
-            case DbfFieldType.AutoIncrement:
-                return (source, context) => DbfField.AutoIncrement(MemoryMarshal.Read<int>(source));
-
-            case DbfFieldType.Double:
-                return (source, context) => DbfField.Double(MemoryMarshal.Read<double>(source));
-
-            case DbfFieldType.Date:
+            case DbfType.Date:
                 return (source, context) =>
                 {
                     source = source.Trim("\0 "u8);
@@ -352,48 +288,57 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                     {
                         Span<char> date = stackalloc char[8];
                         context.Encoding.GetChars(source[..8], date);
-                        return DbfField.Date(DateOnly.ParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture));
+                        return DateOnly.ParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture);
                     }
-                    return DbfField.Null(type, length, @decimal);
+                    return null;
                 };
 
-            case DbfFieldType.Timestamp:
-                return (source, context) => DbfField.Timestamp(DateTimeStart.AddDays(MemoryMarshal.Read<int>(source[..4]) - JulianOffsetToDateTime).AddMilliseconds(MemoryMarshal.Read<int>(source.Slice(4, 4))));
+            case DbfType.Timestamp:
+                return (source, context) => DateTimeStart.AddDays(BinaryPrimitives.ReadInt32LittleEndian(source[..4]) - JulianOffsetToDateTime).AddMilliseconds(BinaryPrimitives.ReadInt32LittleEndian(source.Slice(4, 4)));
 
-            case DbfFieldType.Logical:
+            case DbfType.Logical:
                 return (source, context) =>
                 {
                     char logical = '\0';
                     context.Encoding.GetChars(source[..1], MemoryMarshal.CreateSpan(ref logical, 1));
                     return Char.ToUpperInvariant(logical) switch
                     {
-                        'T' or 'Y' or '1' => DbfField.Logical(true),
-                        'F' or 'N' or '0' => DbfField.Logical(false),
+                        'T' or 'Y' or '1' => true,
+                        'F' or 'N' or '0' => false,
                         //'?' or ' '
-                        _ => DbfField.Null(DbfFieldType.Logical, length, @decimal),
+                        _ => null,
                     };
                 };
 
             default:
-                throw new InvalidEnumArgumentException(nameof(Type), (int)Type, typeof(DbfFieldType));
+                throw new InvalidEnumArgumentException(nameof(Type), (int)Type, typeof(DbfType));
         }
 
-        static T Parse<T>(ReadOnlySpan<byte> bytes, NumberStyles style, IDbfContext context) where T : INumberBase<T>
+        static bool TryParseInt32(ReadOnlySpan<byte> source, Encoding encoding, out int i32)
         {
             char[]? array = null;
-            try
-            {
-                Span<char> chars = bytes.Length <= 64 ? stackalloc char[bytes.Length] : (array = ArrayPool<char>.Shared.Rent(bytes.Length)).AsSpan(0, bytes.Length);
-                context.Encoding.GetChars(bytes, chars);
-                if (context.DecimalSeparator is not '.' && chars.IndexOf(context.DecimalSeparator) is var index && index >= 0)
-                    chars[index] = '.';
-                return T.Parse(chars, style, CultureInfo.InvariantCulture);
-            }
-            finally
-            {
-                if (array is not null)
-                    ArrayPool<char>.Shared.Return(array);
-            }
+            var length = encoding.GetMaxCharCount(source.Length);
+            Span<char> chars = length < 256 ?
+                stackalloc char[length]
+                : (array = ArrayPool<char>.Shared.Rent(length)).AsSpan(0, length);
+            encoding.GetChars(source, chars);
+            var result = int.TryParse(chars, out i32);
+            if (array is not null)
+                ArrayPool<char>.Shared.Return(array);
+            return result;
+        }
+
+        static double ParseF64(ReadOnlySpan<byte> bytes, NumberStyles style, IDbfContext context)
+        {
+            char[]? array = null;
+            Span<char> chars = bytes.Length <= 64 ? stackalloc char[bytes.Length] : (array = ArrayPool<char>.Shared.Rent(bytes.Length)).AsSpan(0, bytes.Length);
+            context.Encoding.GetChars(bytes, chars);
+            if (context.DecimalSeparator is not '.' && chars.IndexOf(context.DecimalSeparator) is var index && index >= 0)
+                chars[index] = '.';
+            var result = double.Parse(chars, style, CultureInfo.InvariantCulture);
+            if (array is not null)
+                ArrayPool<char>.Shared.Return(array);
+            return result;
         }
     }
 
@@ -403,51 +348,41 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         var length = Length;
         var @decimal = Decimal;
 
-        bool IsValidAndNotNull(in DbfField field, Span<byte> target)
+        static bool IsValidAndNotNull([NotNullWhen(true)] object? field, Span<byte> target)
         {
-            if (type != field._dbfType)
-                throw new InvalidOperationException($"Unexpected field type '{field._dbfType}'. Expected '{type}'");
-
             target.Fill((byte)' ');
-            if (field.IsNull)
-                return false;
-
-            return true;
+            return field is not null;
         }
 
         switch (Type)
         {
-            case DbfFieldType.Character:
-                return (in DbfField field, Span<byte> target, IDbfContext context) =>
+            case DbfType.Character:
+                return (field, target, context) =>
                 {
-                    if (IsValidAndNotNull(in field, target))
+                    if (IsValidAndNotNull(field, target))
                     {
-                        ReadOnlySpan<char> @string = field.ReferenceValue;
+                        ReadOnlySpan<char> @string = (string)field;
                         @string = @string[..Math.Min(@string.Length, length)];
                         context.Encoding.GetBytes(@string, target);
                     }
                 };
 
-            case DbfFieldType.Ole when Length is 4:
-            case DbfFieldType.Memo when Length is 4:
-            case DbfFieldType.Binary when Length is 4:
-                return (in DbfField field, Span<byte> target, IDbfContext context) =>
+            case DbfType.Memo when Length is 4:
+                return (field, target, context) =>
                 {
-                    if (context.MemoFile is not null && IsValidAndNotNull(in field, target))
+                    if (context.MemoFile is not null && IsValidAndNotNull(field, target))
                     {
-                        var index = context.MemoFile.Append(field.GetString());
-                        MemoryMarshal.Write(target, ref index);
+                        var index = context.MemoFile.Append((string)field);
+                        BinaryPrimitives.WriteInt32LittleEndian(target, (int)field);
                     }
                 };
 
-            case DbfFieldType.Memo:
-            case DbfFieldType.Binary:
-            case DbfFieldType.Ole:
-                return (in DbfField field, Span<byte> target, IDbfContext context) =>
+            case DbfType.Memo:
+                return (field, target, context) =>
                 {
-                    if (context.MemoFile is not null && IsValidAndNotNull(in field, target))
+                    if (context.MemoFile is not null && IsValidAndNotNull(field, target))
                     {
-                        var index = context.MemoFile.Append(field.GetString());
+                        var index = context.MemoFile.Append((string)field);
                         Span<char> chars = stackalloc char[10];
                         var result = index.TryFormat(chars, out var charsWritten, default, CultureInfo.InvariantCulture);
                         Debug.Assert(result);
@@ -456,89 +391,83 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                     }
                 };
 
-            case DbfFieldType.Numeric:
-            case DbfFieldType.Float:
-                return (in DbfField field, Span<byte> target, IDbfContext context) =>
+            case DbfType.Binary:
+            case DbfType.Ole:
+                return (field, target, context) => _ = IsValidAndNotNull(field, target);
+
+            case DbfType.Numeric:
+            case DbfType.Float:
+                return (field, target, context) =>
                 {
-                    if (IsValidAndNotNull(in field, target))
-                        FormatFloat<double>(in field, target, maxLengthToFormatT: 32, context, @decimal);
+                    if (IsValidAndNotNull(field, target))
+                        FormatF64((double)field, target, context, @decimal);
                 };
 
-            case DbfFieldType.Int32:
-            case DbfFieldType.AutoIncrement:
-                return (in DbfField field, Span<byte> target, IDbfContext context) =>
+            case DbfType.Int32:
+            case DbfType.AutoIncrement:
+                return (field, target, context) =>
                 {
-                    if (IsValidAndNotNull(in field, target))
-                    {
-                        var i32 = field.ReadInlineValue<int>();
-                        MemoryMarshal.Write(target, ref i32);
-                    }
+                    if (IsValidAndNotNull(field, target))
+                        BinaryPrimitives.WriteInt32LittleEndian(target, (int)field);
                 };
 
-            case DbfFieldType.Double:
-                return (in DbfField field, Span<byte> target, IDbfContext context) =>
+            case DbfType.Double:
+                return (field, target, context) =>
                 {
-                    if (IsValidAndNotNull(in field, target))
-                    {
-                        var f64 = field.ReadInlineValue<double>();
-                        MemoryMarshal.Write(target, ref f64);
-                    }
+                    if (IsValidAndNotNull(field, target))
+                        BinaryPrimitives.WriteDoubleLittleEndian(target, (double)field);
                 };
 
-            case DbfFieldType.Date:
-                return (in DbfField field, Span<byte> target, IDbfContext context) =>
+            case DbfType.Date:
+                return (field, target, context) =>
                 {
-                    if (IsValidAndNotNull(in field, target))
+                    if (IsValidAndNotNull(field, target))
                     {
-                        var date = field.ReadInlineValue<DateOnly>();
                         Span<char> chars = stackalloc char[8];
-                        var result = date.TryFormat(chars, out _, "yyyyMMdd", CultureInfo.InvariantCulture);
+                        var result = ((DateOnly)field).TryFormat(chars, out _, "yyyyMMdd", CultureInfo.InvariantCulture);
                         Debug.Assert(result);
                         context.Encoding.GetBytes(chars, target);
                     }
                 };
 
-            case DbfFieldType.Timestamp:
-                return (in DbfField field, Span<byte> target, IDbfContext context) =>
+            case DbfType.Timestamp:
+                return (field, target, context) =>
                 {
-                    if (IsValidAndNotNull(in field, target))
+                    if (IsValidAndNotNull(field, target))
                     {
-                        var timestamp = field.ReadInlineValue<DateTime>();
+                        var timestamp = (DateTime)field;
                         var timespan = timestamp - DateTimeStart;
                         var timestampDate = JulianOffsetToDateTime + (int)timespan.TotalDays;
-                        MemoryMarshal.Write(target[..4], ref timestampDate);
+                        BinaryPrimitives.WriteInt32LittleEndian(target[..4], timestampDate);
                         var timestampTime = (int)(timespan - TimeSpan.FromDays(timespan.Days)).TotalMilliseconds;
-                        MemoryMarshal.Write(target[4..], ref timestampTime);
+                        BinaryPrimitives.WriteInt32LittleEndian(target[4..], timestampTime);
                     }
                 };
 
-            case DbfFieldType.Logical:
-                return (in DbfField field, Span<byte> target, IDbfContext context) =>
-                {
-                    if (IsValidAndNotNull(in field, target))
-                    {
-                        var boolean = field.ReadInlineValue<bool>();
-                        target[0] = (byte)(boolean ? 'T' : 'F');
-                    }
-                    else
-                    {
-                        target[0] = (byte)'?';
-                    }
-                };
+            case DbfType.Logical:
+                return (field, target, context) => target[0] = IsValidAndNotNull(field, target) ? (byte)((bool)field ? 'T' : 'F') : (byte)'?';
 
             default:
-                throw new InvalidEnumArgumentException(nameof(Type), (int)Type, typeof(DbfFieldType));
+                throw new InvalidEnumArgumentException(nameof(Type), (int)Type, typeof(DbfType));
         }
 
-        static void FormatFloat<T>(in DbfField field, Span<byte> target, int maxLengthToFormatT, IDbfContext context, int decimalSpaces) where T : struct, IFloatingPoint<T>
+        static void FormatF64(double value, Span<byte> target, IDbfContext context, int decimalSpaces)
         {
+            const int maxLengthToFormatT = 32;
             Span<char> buffer = stackalloc char[maxLengthToFormatT];
             Span<char> format = GetFormat(stackalloc char[maxLengthToFormatT], decimalSpaces);
-            var value = field.ReadInlineValue<T>();
-            var result = value.TryFormat(buffer, out var charsWritten, format, CultureInfo.InvariantCulture);
-            Debug.Assert(result);
-            if (buffer.IndexOf('.') is var indexOfDot && indexOfDot >= 0)
-                buffer[indexOfDot] = context.DecimalSeparator;
+            if (!value.TryFormat(buffer, out var charsWritten, format, CultureInfo.InvariantCulture))
+            {
+                var array = ArrayPool<char>.Shared.Rent(512);
+                if (!value.TryFormat(array, out charsWritten, format, CultureInfo.InvariantCulture))
+                {
+                    Debug.WriteLine($"Failed to format {value}");
+                    return;
+                }
+                charsWritten = Math.Min(maxLengthToFormatT, charsWritten);
+                array.AsSpan(^charsWritten..).CopyTo(buffer);
+            }
+
             if (charsWritten < target.Length)
             {
                 buffer = buffer[..Math.Min(target.Length, buffer.Length)];
@@ -551,6 +480,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
             {
                 buffer = buffer[^target.Length..];
             }
+            else
+            {
+                buffer = buffer[..charsWritten];
+            }
+
+            // Replace decimal separator.
+            if (context.DecimalSeparator is not '.' && buffer.IndexOf('.') is var indexOfDot && indexOfDot >= 0)
+                buffer[indexOfDot] = context.DecimalSeparator;
 
             context.Encoding.GetBytes(buffer, target);
 
@@ -581,7 +518,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <param name="s">The string to parse.</param>
     /// <returns>The result of parsing <paramref name="s"/>.</returns>
     /// <exception cref="FormatException"></exception>
-    public DbfField ParseField(string s)
+    public object? ParseField(string s)
     {
         if (!TryParseField(s, out var field))
             throw new FormatException();
@@ -595,60 +532,44 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <param name="result">When this method returns, contains the result of successfully parsing s or an
     /// undefined value on failure.</param>
     /// <returns><see langword="true" /> if s was successfully parsed; otherwise, <see langword="false" />.</returns>
-    public bool TryParseField([NotNullWhen(true)] string? s, [MaybeNullWhen(false)] out DbfField result)
+    public bool TryParseField([NotNullWhen(true)] string? s, out object? result)
     {
+        result = null;
+        if (String.IsNullOrEmpty(s))
+            return true;
+
         switch (Type)
         {
-            case DbfFieldType.Character:
-                result = DbfField.Character(s, Length);
+            case DbfType.Character:
+            case DbfType.Memo:
+                result = s;
                 return true;
 
-            case DbfFieldType.Memo:
-                result = DbfField.Memo(s, Length);
+            case DbfType.Binary:
+            case DbfType.Ole:
+                return false;
+
+            case DbfType.Numeric when double.TryParse(s, out var f64):
+            case DbfType.Float when double.TryParse(s, out f64):
+            case DbfType.Double when double.TryParse(s, out f64):
+                result = f64;
                 return true;
 
-            case DbfFieldType.Binary:
-                result = DbfField.Binary(s, Length);
+            case DbfType.Int32 when int.TryParse(s, out var i32):
+            case DbfType.AutoIncrement when int.TryParse(s, out i32):
+                result = i32;
                 return true;
 
-            case DbfFieldType.Ole:
-                result = DbfField.Ole(s, Length);
+            case DbfType.Date when DateOnly.TryParseExact(s, "yyyyMMdd", out var date):
+                result = date;
                 return true;
 
-            case DbfFieldType _ when String.IsNullOrEmpty(s):
-                result = DbfField.Null(Type, Length, Decimal);
+            case DbfType.Timestamp when DateTime.TryParse(s, out var timestamp):
+                result = timestamp;
                 return true;
 
-            case DbfFieldType.Numeric when double.TryParse(s, out var @double):
-                result = DbfField.Numeric(@double, Length, Decimal);
-                return true;
-
-            case DbfFieldType.Float when double.TryParse(s, out var f64):
-                result = DbfField.Float(f64, Length, Decimal);
-                return true;
-
-            case DbfFieldType.Double when double.TryParse(s, out var f64):
-                result = DbfField.Double(f64);
-                return true;
-
-            case DbfFieldType.Int32 when int.TryParse(s, out var i32):
-                result = DbfField.Int32(i32);
-                return true;
-
-            case DbfFieldType.AutoIncrement when int.TryParse(s, out var i32):
-                result = DbfField.AutoIncrement(i32);
-                return true;
-
-            case DbfFieldType.Date when DateOnly.TryParseExact(s, "yyyyMMdd", out var date):
-                result = DbfField.Date(date);
-                return true;
-
-            case DbfFieldType.Timestamp when DateTime.TryParse(s, out var timestamp):
-                result = DbfField.Timestamp(timestamp);
-                return true;
-
-            case DbfFieldType.Logical:
-                result = DbfField.Logical(s is "T" or "t" or "Y" or "y");
+            case DbfType.Logical:
+                result = s is "T" or "t" or "Y" or "y";
                 return true;
 
             default:
@@ -658,7 +579,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Character" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Character" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <param name="length">The length of the field (number of ASCII characters).</param>
@@ -674,14 +595,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Character,
+            Type = DbfType.Character,
             Length = length,
             Decimal = 0,
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Date" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Date" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <returns>
@@ -696,14 +617,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Date,
+            Type = DbfType.Date,
             Length = 8,
             Decimal = 0
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Float" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Float" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <param name="length">The length of the field (number of ASCII characters).</param>
@@ -711,7 +632,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <returns>
     /// A new instance of <see cref="DbfFieldDescriptor" />
     /// </returns>
-    /// <remarks>Identical to <see cref="DbfFieldType.Numeric" />; maintained for compatibility.</remarks>
+    /// <remarks>Identical to <see cref="DbfType.Numeric" />; maintained for compatibility.</remarks>
     public static DbfFieldDescriptor Float(string name, byte length = 10, byte @decimal = 0)
     {
         Span<byte> nameSpan = stackalloc byte[20];
@@ -721,14 +642,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Numeric,
+            Type = DbfType.Float,
             Length = length,
             Decimal = @decimal,
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Numeric" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Numeric" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <param name="length">The length of the field (number of ASCII characters).</param>
@@ -745,14 +666,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Numeric,
+            Type = DbfType.Numeric,
             Length = length,
             Decimal = @decimal,
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Logical" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Logical" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <returns>
@@ -767,14 +688,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Logical,
+            Type = DbfType.Logical,
             Length = 1,
             Decimal = 0
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Timestamp" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Timestamp" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <returns>
@@ -789,14 +710,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Timestamp,
+            Type = DbfType.Timestamp,
             Length = 8,
             Decimal = 0
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Int32" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Int32" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <returns>
@@ -811,14 +732,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Int32,
+            Type = DbfType.Int32,
             Length = 4,
             Decimal = 0
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.AutoIncrement" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.AutoIncrement" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <returns>
@@ -833,14 +754,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.AutoIncrement,
+            Type = DbfType.AutoIncrement,
             Length = 4,
             Decimal = 0
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Double" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Double" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <returns>
@@ -855,14 +776,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Double,
+            Type = DbfType.Double,
             Length = 8,
             Decimal = 0
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Memo" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Memo" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <param name="length">The length of the field (number of ASCII characters).</param>
@@ -878,14 +799,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Memo,
+            Type = DbfType.Memo,
             Length = length,
             Decimal = 0,
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Binary" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Binary" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <param name="length">The length of the field (number of ASCII characters).</param>
@@ -901,14 +822,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Binary,
+            Type = DbfType.Binary,
             Length = length,
             Decimal = 0,
         };
     }
 
     /// <summary>
-    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfFieldType.Ole" />.
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Ole" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
     /// <param name="length">The length of the field (number of ASCII characters).</param>
@@ -924,7 +845,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         return new()
         {
             Name = nameSpan,
-            Type = DbfFieldType.Ole,
+            Type = DbfType.Ole,
             Length = length,
             Decimal = 0,
         };
