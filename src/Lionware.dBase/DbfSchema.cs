@@ -33,7 +33,7 @@ public sealed class DbfSchema : IEquatable<DbfSchema>
         for (int i = 0; i < _descriptors.Length; ++i)
         {
             ref readonly var descriptor = ref _descriptors[i];
-            descriptor.CoerceLength();
+            //descriptor.CoerceLength();
             _readers[i] = descriptor.CreateReader();
             _writers[i] = descriptor.CreateWriter();
             _offsets[i] = recordLength;

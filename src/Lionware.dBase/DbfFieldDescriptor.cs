@@ -14,31 +14,33 @@ internal delegate object? DbfFieldReader(ReadOnlySpan<byte> source, IDbfContext 
 internal delegate void DbfFieldWriter(object? field, Span<byte> target, IDbfContext context);
 
 /// <summary>
-/// Describes a <see cref="DbfField" />.
+/// Describes a field in a <see cref="Dbf"/>.
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = 32)]
 [DebuggerDisplay("{" + nameof(GetDebuggerDisplay) + "(),nq}")]
 public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
 {
+    private const int MaxNameLength = 11;
     private const int JulianOffsetToDateTime = 1721426;
-    private static readonly DateTime DateTimeStart = new DateTime(1, 1, 1);
+    private static readonly DateTime DateTimeStart = new(1, 1, 1);
 
     [FieldOffset(0)]
     private readonly byte _name;
-    [FieldOffset(10)]
-    private readonly byte _zero; // '\0'
     [FieldOffset(11)]
     private readonly DbfType _type;
     [FieldOffset(12)]
-    private readonly int _address; // in memory address.
+    private readonly uint _address;
     [FieldOffset(16)]
     private readonly byte _length;
     [FieldOffset(17)]
     private readonly byte _decimal;
+    // 18-19 reserved for dBASE IIIPlus/LAN
     [FieldOffset(20)]
-    private readonly ushort _workAreaId;
+    private readonly byte _workAreaId;
+    // 21-22 reserved for dBASE IIIPlus/LAN
     [FieldOffset(23)]
-    private readonly int _setFields;
+    private readonly byte _setFields;
+    // 24-30 reserved
     [FieldOffset(31)]
     private readonly byte _inMdxFile;
 
@@ -71,8 +73,9 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         }
         init
         {
-            var truncatedValue = value[..Math.Min(10, value.Length)];
-            truncatedValue.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _name), 10));
+            var name = MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _name), MaxNameLength);
+            name.Clear();
+            value[..Math.Min(MaxNameLength, value.Length)].CopyTo(name);
         }
     }
 
@@ -108,15 +111,10 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// </returns>
     public bool Equals(DbfFieldDescriptor other)
     {
-        return Equals(in _name, in other._name, 10)
-            && _zero == other._zero
+        return Equals(in _name, in other._name, MaxNameLength)
             && _type == other._type
-            && _address == other._address
             && _length == other._length
-            && _decimal == other._decimal
-            && _workAreaId == other._workAreaId
-            && _setFields == other._setFields
-            && _inMdxFile == other._inMdxFile;
+            && _decimal == other._decimal;
 
         static bool Equals(in byte left, in byte right, int length)
         {
@@ -151,15 +149,10 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     public override int GetHashCode()
     {
         var hash = new HashCode();
-        hash.Add(GetHashCode(in _name, 10));
-        hash.Add(_zero);
+        hash.Add(GetHashCode(in _name, MaxNameLength));
         hash.Add(_type);
-        hash.Add(_address);
         hash.Add(_length);
         hash.Add(_decimal);
-        hash.Add(_workAreaId);
-        hash.Add(_setFields);
-        hash.Add(_inMdxFile);
         return hash.ToHashCode();
 
         static int GetHashCode(in byte obj, int length)
@@ -604,7 +597,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -626,7 +618,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -651,7 +642,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -675,7 +665,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -697,7 +686,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -719,7 +707,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -741,7 +728,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -763,7 +749,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -785,7 +770,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -808,7 +792,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -831,7 +814,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,
@@ -854,7 +836,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        nameSpan = nameSpan[..10];
         return new()
         {
             Name = nameSpan,

@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -41,36 +42,45 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
         _stream = new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite);
 
         // Read the metadata.
-        using var reader = new BinaryReader(_stream, Encoding.ASCII, leaveOpen: true);
-        _version = reader.ReadByte();
-        LastUpdate = new DateOnly(year: 1900 + reader.ReadByte(), month: reader.ReadByte(), day: reader.ReadByte());
-        RecordCount = reader.ReadInt32();
-        var headerLength = reader.ReadInt16();
-        var recordLength = reader.ReadInt16();
-        reader.BaseStream.Position += 2; // Reserved.
-        InTransaction = reader.ReadByte() == 1;
-        IsEncrypted = reader.ReadByte() == 1;
-        reader.BaseStream.Position += 12; // Reserved.
-        HasMdxFile = reader.ReadByte() == 1;
-        Language = (DbfLanguage)reader.ReadByte();
-        reader.BaseStream.Position += 2; // Reserved.
+        Span<byte> header = stackalloc byte[32];
+        _stream.ReadExactly(header);
+        _version = header[0];
+        LastUpdate = new DateOnly(year: 1900 + header[1], month: header[2], day: header[3]);
+        RecordCount = BinaryPrimitives.ReadUInt32LittleEndian(header[4..]);
+        HeaderLength = BinaryPrimitives.ReadUInt16LittleEndian(header[8..]);
+        RecordLength = BinaryPrimitives.ReadUInt16LittleEndian(header[10..]);
+        // 12-13 Reserved.
+        InTransaction = header[14] == 1;
+        IsEncrypted = header[15] == 1;
+        // 16-19 Free record thread.
+        // 20-27 Reserved for multi user dbase.
+        HasMdxFile = header[28] == 1;
+        Language = (DbfLanguage)header[29];
+        // 30-31 Reserved.
 
-        var descriptors = new DbfFieldDescriptor[headerLength / 32 - 1];
-        reader.Read(MemoryMarshal.AsBytes(descriptors.AsSpan()));
-        Schema = new DbfSchema(descriptors);
+        var array = ArrayPool<byte>.Shared.Rent(HeaderLength - 32);
+        try
+        {
+            _stream.ReadExactly(array);
+            var count = 0;
+            var buffer = array.AsSpan(0, HeaderLength - 32);
+            while (buffer[count] is not 0x0D)
+                count += 32;
 
-        if (reader.ReadByte() != 0x0D)
-            throw new FormatException("Not a dBase file");
+            var descriptors = MemoryMarshal.Cast<byte, DbfFieldDescriptor>(buffer[..count]);
+            Schema = new DbfSchema(descriptors.ToArray());
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(array);
+        }
 
-        if (HeaderLength != headerLength)
-            throw new InvalidOperationException("Invalid header length");
-
-        if (RecordLength != recordLength)
+        if (RecordLength != Schema.RecordLength)
             throw new InvalidOperationException("Invalid record length");
 
         _stream.Position = 0;
 
-        if (HasDbtMemo && DbfMemoFile.TryOpen(this, out var memoFile))
+        if (DbfMemoFile.TryOpen(this, out var memoFile))
             MemoFile = memoFile;
     }
 
@@ -90,39 +100,39 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
         Schema = schema;
 
         _version = 0x03;
-        if (HasMemoField(schema.Descriptors))
+        var hasMemoField = HasMemoField(schema.Descriptors);
+        if (hasMemoField)
             _version |= 0x80;
 
+        HeaderLength = 32 + 32 * Schema.FieldCount + 1;
+        RecordLength = Schema.RecordLength;
+
         // Write the metadata.
-        using var writer = new BinaryWriter(_stream, Encoding.ASCII, leaveOpen: true);
-        writer.Write(_version);
-        writer.Write((byte)(LastUpdate.Year - 1900));
-        writer.Write((byte)LastUpdate.Month);
-        writer.Write((byte)LastUpdate.Day);
-        writer.Write(RecordCount);
-        writer.Write(HeaderLength);
-        writer.Write(RecordLength);
-        writer.Write((short)0);
-        writer.Write(Convert.ToByte(InTransaction));
-        writer.Write(Convert.ToByte(IsEncrypted));
-        writer.Write(0);
-        writer.Write(0);
-        writer.Write(0);
-        writer.Write(Convert.ToByte(HasMdxFile));
-        writer.Write((byte)Language);
-        writer.Write((short)0);
-        writer.Write(MemoryMarshal.AsBytes(Schema.Descriptors));
-        writer.Write(0x0D);
-        // Write the EOF byte (0x1A).
-        // This byte is overwritten when Add/AddRange/Clear is called. So these methods must append the byte again.
-        // For insert/remove, since the data is shifted right/left, the byte is kept.
-        writer.Write((byte)EofByte);
+        Span<byte> header = stackalloc byte[32];
+        header.Clear();
+        header[0] = _version;
+        header[1] = (byte)(LastUpdate.Year - 1900);
+        header[2] = (byte)LastUpdate.Month;
+        header[3] = (byte)LastUpdate.Day;
+        BinaryPrimitives.WriteUInt32LittleEndian(header[4..], (uint)RecordCount);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[8..], (ushort)HeaderLength);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[10..], (ushort)RecordLength);
+        // 12-13 Reserved.
+        header[14] = Convert.ToByte(InTransaction);
+        header[15] = Convert.ToByte(IsEncrypted);
+        // 16-19 Free record thread.
+        // 20-27 Reserved for multi user dbase.
+        header[28] = Convert.ToByte(HasMdxFile);
+        header[29] = (byte)Language;
+        // 30-31 Reserved.
+
+        _stream.Write(MemoryMarshal.AsBytes(Schema.Descriptors));
+        _stream.WriteByte(0x0D);
 
         _stream.Position = 0;
 
-        if (HasDbtMemo)
+        if (hasMemoField)
             MemoFile = DbfMemoFile.Create(this);
-
 
         static bool HasMemoField(ReadOnlySpan<DbfFieldDescriptor> descriptors)
         {
@@ -186,22 +196,22 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     /// <summary>
     /// Gets a value indicating whether this instance is a FoxPro format.
     /// </summary>
-    public bool IsFoxPro { get => Version is 0x30 or 0x31 or 0xf5 or 0xfb; }
+    public bool IsFoxPro { get => Version is 0x02 or 0x30 or 0x31 or 0xf5 or 0xfb; }
 
-    /// <summary>
-    /// Gets a value indicating whether this instance has a DOS memo file.
-    /// </summary>
-    public bool HasDosMemo { get => (_version & 0x08) != 0; init => _version = (byte)(_version & 0xF7 | (value ? 0x08 : 0x00)); }
+    ///// <summary>
+    ///// Gets a value indicating whether this instance has a DOS memo file.
+    ///// </summary>
+    //public bool HasDosMemo { get => (_version & 0x08) != 0; init => _version = (byte)(_version & 0xF7 | (value ? 0x08 : 0x00)); }
 
-    /// <summary>
-    /// Gets a value indicating whether this instance has a SQL table.
-    /// </summary>
-    public int HasSqlTable { get => (_version & 0x70) >> 4; init => _version = (byte)(_version & 0x8F | value << 4 & 0x70); }
+    ///// <summary>
+    ///// Gets a value indicating whether this instance has a SQL table.
+    ///// </summary>
+    //public int HasSqlTable { get => (_version & 0x70) >> 4; init => _version = (byte)(_version & 0x8F | value << 4 & 0x70); }
 
-    /// <summary>
-    /// Gets a value indicating whether this instance has a DBT memo file.
-    /// </summary>
-    public bool HasDbtMemo { get => (_version & 0x80) != 0; init => _version = (byte)(_version & 0x7F | (value ? 0x80 : 0x00)); }
+    ///// <summary>
+    ///// Gets a value indicating whether this instance has a DBT memo file.
+    ///// </summary>
+    //public bool HasDbtMemo { get => (_version & 0x80) != 0; init => _version = (byte)(_version & 0x7F | (value ? 0x80 : 0x00)); }
 
     /// <summary>
     /// Gets the date of the last update.
@@ -216,12 +226,12 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     /// <summary>
     /// Gets the length of the header, in bytes.
     /// </summary>
-    public int HeaderLength { get => 32 + 32 * Schema.FieldCount + 1; }
+    public int HeaderLength { get; }
 
     /// <summary>
     /// Gets the length of each record, in bytes.
     /// </summary>
-    public int RecordLength { get => Schema.RecordLength; }
+    public int RecordLength { get; }
 
     /// <summary>
     /// Gets a value indicating whether the data is encrypted.

@@ -121,23 +121,44 @@ public abstract class DbfMemoFile : IDisposable
     internal static bool TryOpen(Dbf dbf, [MaybeNullWhen(false)] out DbfMemoFile memoFile)
     {
         memoFile = null;
-        var fileName = Path.ChangeExtension(dbf.FileName, ".dbt");
+        var fileNames = new string[]
+        {
+            Path.ChangeExtension(dbf.FileName, ".dbt"),
+            Path.ChangeExtension(dbf.FileName, ".fpt")
+        };
 
-        if (!File.Exists(fileName))
+        var fileName = fileNames.FirstOrDefault(File.Exists);
+        if (fileName is null)
             return false;
 
         memoFile = dbf.Version switch
         {
-            0x83 => new DbfMemoFileV3(new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite), writeHeader: false),
+            0x02 => null,
+            0x03 => new DbfMemoFileV3(new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite), writeHeader: false),
+            0x04 => null,
+            0x05 => null,
+            0x07 => null,
+            0x30 => null,
+            0x31 => null,
+            0x43 => null,
+            0x63 => null,
+            0x7b => null,
+            0x83 => null,
+            0x87 => null,
+            0x8b => null,
+            0x8e => null,
+            0xcb => null,
+            0xf5 => null,
+            0xfb => null,
             _ => throw new NotSupportedException($"Memo file for {dbf.VersionDescription}")
         };
 
-        return true;
+        return memoFile is not null;
     }
 
     internal static DbfMemoFile Create(Dbf dbf)
     {
-        var fileName = Path.ChangeExtension(dbf.FileName, ".dbt");
+        var fileName = Path.ChangeExtension(dbf.FileName, dbf.IsFoxPro ? ".fpt" : ".dbt");
         var memoFile = dbf.Version switch
         {
             0x83 => new DbfMemoFileV3(new FileStream(fileName, FileMode.CreateNew, FileAccess.ReadWrite), writeHeader: true),

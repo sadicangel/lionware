@@ -1,22 +1,23 @@
 ﻿using System.Diagnostics;
 
 namespace Lionware.dBase;
-public sealed class Dbf03_should : IClassFixture<Dbf03_fixture>
-{
-    private readonly Dbf03_fixture _fixture;
 
-    public Dbf03_should(Dbf03_fixture fixture) => _fixture = fixture;
+public sealed class Dbf30_should : IClassFixture<Dbf30_fixture>
+{
+    private readonly Dbf30_fixture _fixture;
+
+    public Dbf30_should(Dbf30_fixture fixture) => _fixture = fixture;
 
     [Fact]
-    public void Return_0x03_for_Version()
+    public void Return_0x30_for_Version()
     {
-        Assert.Equal(0x03, _fixture.ReadOnlyDbf.Version);
+        Assert.Equal(0x30, _fixture.ReadOnlyDbf.Version);
     }
 
     [Fact]
-    public void Return_false_for_IsFoxPro()
+    public void Return_true_for_IsFoxPro()
     {
-        Assert.False(_fixture.ReadOnlyDbf.IsFoxPro);
+        Assert.True(_fixture.ReadOnlyDbf.IsFoxPro);
     }
 
     //[Fact]
@@ -34,13 +35,13 @@ public sealed class Dbf03_should : IClassFixture<Dbf03_fixture>
     [Fact]
     public void Return_14_for_RecordCount()
     {
-        Assert.Equal(14, _fixture.ReadOnlyDbf.RecordCount);
+        Assert.Equal(34, _fixture.ReadOnlyDbf.RecordCount);
     }
 
     [Fact]
-    public void Return_31_for_FieldCount()
+    public void Return_145_for_FieldCount()
     {
-        Assert.Equal(31, _fixture.ReadOnlyDbf.Schema.FieldCount);
+        Assert.Equal(145, _fixture.ReadOnlyDbf.Schema.FieldCount);
     }
 
     [Fact]

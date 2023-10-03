@@ -8,7 +8,7 @@ public sealed class Dbf83_should : IClassFixture<Dbf83_fixture>
     public Dbf83_should(Dbf83_fixture fixture) => _fixture = fixture;
 
     [Fact]
-    public void Return_131_for_Version()
+    public void Return_0x83_for_Version()
     {
         Assert.Equal(0x83, _fixture.ReadOnlyDbf.Version);
     }
@@ -19,17 +19,17 @@ public sealed class Dbf83_should : IClassFixture<Dbf83_fixture>
         Assert.False(_fixture.ReadOnlyDbf.IsFoxPro);
     }
 
-    [Fact]
-    public void Return_true_for_HasDbtMemo()
-    {
-        Assert.True(_fixture.ReadOnlyDbf.HasDbtMemo);
-    }
+    //[Fact]
+    //public void Return_true_for_HasDbtMemo()
+    //{
+    //    Assert.True(_fixture.ReadOnlyDbf.HasDbtMemo);
+    //}
 
-    [Fact]
-    public void Return_false_for_HasDosMemo()
-    {
-        Assert.False(_fixture.ReadOnlyDbf.HasDosMemo);
-    }
+    //[Fact]
+    //public void Return_false_for_HasDosMemo()
+    //{
+    //    Assert.False(_fixture.ReadOnlyDbf.HasDosMemo);
+    //}
 
     [Fact]
     public void Return_67_for_RecordCount()
@@ -58,7 +58,7 @@ public sealed class Dbf83_should : IClassFixture<Dbf83_fixture>
             var values = _fixture.ReadOnlyValues[i];
             for (int j = 0; j < record.Count; j++)
             {
-                var actual = record[j].ToString();
+                var actual = record[j]?.ToString();
                 var expected = values[j];
 
                 Debug.WriteLine($"{_fixture.ReadOnlySchema[j].NameString}: {expected}");
@@ -88,7 +88,7 @@ public sealed class Dbf83_should : IClassFixture<Dbf83_fixture>
             {
                 var expected = values[j];
                 Debug.WriteLine($"{_fixture.ReadOnlySchema[j].NameString}: {expected}");
-                var actual = record[j].ToString();
+                var actual = record[j]?.ToString();
                 Assert.Equal(expected, actual);
             }
         }

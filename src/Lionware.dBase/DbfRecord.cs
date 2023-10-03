@@ -60,10 +60,34 @@ public sealed class DbfRecord : IReadOnlyList<object?>
     /// </summary>
     public object? this[string name] { get => _dbf[Index, name]; set => _dbf[Index, name] = value; }
 
-    public T GetValue<T>(int index) => (T)this[index];
-    public T GetValue<T>(string name) => (T)this[name];
+    /// <summary>
+    /// Gets the value of the field at the specified index.
+    /// </summary>
+    /// <param name="index">The index of the field to get the value.</param>
+    /// <returns></returns>
+    public T? GetValue<T>(int index) => (T?)this[index];
 
+    /// <summary>
+    /// Gets the value of the field with the specified name.
+    /// </summary>
+    /// <param name="name">The name of the field to get the value.</param>
+    /// <returns></returns>
+    public T? GetValue<T>(string name) => (T?)this[name];
+
+    /// <summary>
+    /// Sets the value of the field at the specified index.
+    /// </summary>
+    /// <param name="index">The index of the field to set the value.</param>
+    /// <param name="value">The value to set.</param>
+    /// <returns></returns>
     public void SetValue<T>(int index, T? value) => this[index] = value;
+
+    /// <summary>
+    /// Sets the value of the field with the specified name.
+    /// </summary>
+    /// <param name="name">The name of the field to set the value.</param>
+    /// <param name="value">The value to set.</param>
+    /// <returns></returns>
     public void SetValue<T>(string name, T? value) => this[name] = value;
 
     /// <summary>
@@ -81,8 +105,7 @@ public sealed class DbfRecord : IReadOnlyList<object?>
     /// <returns>
     /// A hash code for this instance, suitable for use in hashing algorithms and data structures like a hash table. 
     /// </returns>
-    /// <exception cref="NotImplementedException"></exception>
-    public override int GetHashCode() => Index.GetHashCode();
+    public override int GetHashCode() => HashCode.Combine(_dbf, Index);
 
     /// <inheritdoc/>
     public IEnumerator<object?> GetEnumerator()

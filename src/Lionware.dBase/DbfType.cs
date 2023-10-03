@@ -48,7 +48,7 @@ public enum DbfType : byte
     /// Date/Time stamp, including the Date format plus hours, minutes, and seconds, such as hh:MM:ss.
     /// <para>In memory representation: <see cref="DateTime"/>.</para>
     /// </summary>
-    Timestamp = (byte)'@',
+    Timestamp = (byte)'T',
     /// <summary>
     ///   <c>Y</c>, <c>y</c>, <c>N</c>, <c>n</c>, <c>T</c>, <c>t</c>, <c>F</c>, <c>f</c>, <c>1</c>, <c>0</c> or <c>?</c> (when uninitialized).
     /// <para>In memory representation: <see cref="bool"/>.</para>
