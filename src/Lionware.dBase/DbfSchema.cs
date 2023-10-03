@@ -10,7 +10,7 @@ public sealed class DbfSchema : IEquatable<DbfSchema>
     private readonly DbfFieldWriter[] _writers;
     private readonly int[] _offsets;
     private readonly int[] _lengths;
-    private readonly Dictionary<string, int> _indicesByName;
+    private readonly Dictionary<string, int> _indices;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DbfSchema" /> class.
@@ -28,7 +28,7 @@ public sealed class DbfSchema : IEquatable<DbfSchema>
         _writers = new DbfFieldWriter[descriptors.Length];
         _offsets = new int[descriptors.Length];
         _lengths = new int[descriptors.Length];
-        _indicesByName = new Dictionary<string, int>(_descriptors.Length);
+        _indices = new Dictionary<string, int>(_descriptors.Length);
         var recordLength = 1; // Status byte.
         for (int i = 0; i < _descriptors.Length; ++i)
         {
@@ -38,7 +38,7 @@ public sealed class DbfSchema : IEquatable<DbfSchema>
             _writers[i] = descriptor.CreateWriter();
             _offsets[i] = recordLength;
             _lengths[i] = descriptor.Length;
-            _indicesByName[descriptor.NameString] = i;
+            _indices[descriptor.NameString] = i;
             recordLength += descriptor.Length;
         }
         RecordLength = recordLength;
@@ -74,7 +74,7 @@ public sealed class DbfSchema : IEquatable<DbfSchema>
     /// </summary>
     /// <param name="name">The name of the field to get the index.</param>
     /// <returns></returns>
-    public int IndexOf(string name) => _indicesByName.GetValueOrDefault(name, -1);
+    public int IndexOf(string name) => _indices.GetValueOrDefault(name, -1);
 
     /// <summary>
     /// Gets the byte offset, from the record start, of the field at the specified index.

@@ -316,29 +316,42 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
 
         static bool TryParseInt32(ReadOnlySpan<byte> source, Encoding encoding, out int i32)
         {
-            char[]? array = null;
             var length = encoding.GetMaxCharCount(source.Length);
-            Span<char> chars = length < 256 ?
-                stackalloc char[length]
-                : (array = ArrayPool<char>.Shared.Rent(length)).AsSpan(0, length);
-            encoding.GetChars(source, chars);
-            var result = int.TryParse(chars, out i32);
-            if (array is not null)
-                ArrayPool<char>.Shared.Return(array);
-            return result;
+            char[]? array = null;
+            try
+            {
+                Span<char> buffer = length < 64
+                    ? stackalloc char[length]
+                    : (array = ArrayPool<char>.Shared.Rent(length)).AsSpan(0, length);
+
+                encoding.GetChars(source, buffer);
+                var result = int.TryParse(buffer, out i32);
+                return result;
+            }
+            finally
+            {
+                if (array is not null)
+                    ArrayPool<char>.Shared.Return(array);
+            }
         }
 
         static double ParseF64(ReadOnlySpan<byte> bytes, NumberStyles style, IDbfContext context)
         {
             char[]? array = null;
-            Span<char> chars = bytes.Length <= 64 ? stackalloc char[bytes.Length] : (array = ArrayPool<char>.Shared.Rent(bytes.Length)).AsSpan(0, bytes.Length);
-            context.Encoding.GetChars(bytes, chars);
-            if (context.DecimalSeparator is not '.' && chars.IndexOf(context.DecimalSeparator) is var index && index >= 0)
-                chars[index] = '.';
-            var result = double.Parse(chars, style, CultureInfo.InvariantCulture);
-            if (array is not null)
-                ArrayPool<char>.Shared.Return(array);
-            return result;
+            try
+            {
+                Span<char> buffer = bytes.Length < 64
+                    ? stackalloc char[bytes.Length]
+                    : (array = ArrayPool<char>.Shared.Rent(bytes.Length)).AsSpan(0, bytes.Length);
+
+                context.Encoding.GetChars(bytes, buffer);
+                return double.Parse(buffer, style, CultureInfo.InvariantCulture); ;
+            }
+            finally
+            {
+                if (array is not null)
+                    ArrayPool<char>.Shared.Return(array);
+            }
         }
     }
 

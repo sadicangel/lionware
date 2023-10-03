@@ -13,6 +13,7 @@ namespace Lionware.dBase;
 /// <seealso cref="ICollection{T}" />
 public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
 {
+    private const int MaxStackSizeAllowed = 256;
     private const int EofByte = 0x1A;
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
@@ -89,7 +90,7 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
         Schema = schema;
 
         _version = 0x03;
-        if (schema.Descriptors.Any(f => f.Type is DbfType.Binary or DbfType.Ole or DbfType.Memo))
+        if (HasMemoField(schema.Descriptors))
             _version |= 0x80;
 
         // Write the metadata.
@@ -121,6 +122,17 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
 
         if (HasDbtMemo)
             MemoFile = DbfMemoFile.Create(this);
+
+
+        static bool HasMemoField(ReadOnlySpan<DbfFieldDescriptor> descriptors)
+        {
+            foreach (ref readonly var descriptor in descriptors)
+            {
+                if (descriptor.Type is DbfType.Binary or DbfType.Ole or DbfType.Memo)
+                    return true;
+            }
+            return false;
+        }
     }
 
     /// <summary>
@@ -285,16 +297,22 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
             Ensure.InRange(fieldIndex, 0, Schema.FieldCount);
 
             byte[]? array = null;
-            long offset = HeaderLength + RecordLength * recordIndex;
-            Span<byte> buffer = RecordLength < 256
-                ? stackalloc byte[RecordLength]
-                : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
-            _stream.Position = offset;
-            _stream.Read(buffer);
-            var result = Schema.Read(fieldIndex, buffer, this);
-            if (array is not null)
-                ArrayPool<byte>.Shared.Return(array);
-            return result;
+            try
+            {
+                Span<byte> buffer = RecordLength < MaxStackSizeAllowed
+                    ? stackalloc byte[RecordLength]
+                    : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
+
+                long offset = HeaderLength + RecordLength * recordIndex;
+                _stream.Position = offset;
+                _stream.Read(buffer);
+                return Schema.Read(fieldIndex, buffer, this);
+            }
+            finally
+            {
+                if (array is not null)
+                    ArrayPool<byte>.Shared.Return(array);
+            }
         }
         set
         {
@@ -304,10 +322,11 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
             byte[]? array = null;
             try
             {
-                long offset = HeaderLength + RecordLength * recordIndex;
-                Span<byte> buffer = RecordLength < 256
+                Span<byte> buffer = RecordLength < MaxStackSizeAllowed
                     ? stackalloc byte[RecordLength]
                     : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
+
+                long offset = HeaderLength + RecordLength * recordIndex;
                 Schema.Write(fieldIndex, value, buffer, this);
                 _stream.Position = offset;
                 _stream.Write(buffer);
@@ -352,17 +371,20 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
         Ensure.InRange(recordIndex, 0, RecordCount);
 
         byte[]? array = null;
-        Span<byte> buffer = RecordLength < 256
-            ? stackalloc byte[RecordLength]
-            : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
+        try
+        {
+            Span<byte> buffer = RecordLength < MaxStackSizeAllowed
+                ? stackalloc byte[RecordLength]
+                : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
 
-        ReadRawRecord(recordIndex, buffer);
-        var values = Schema.Read(buffer, this);
-
-        if (array is not null)
-            ArrayPool<byte>.Shared.Return(array);
-
-        return values;
+            ReadRawRecord(recordIndex, buffer);
+            return Schema.Read(buffer, this);
+        }
+        finally
+        {
+            if (array is not null)
+                ArrayPool<byte>.Shared.Return(array);
+        }
     }
 
     internal void WriteRawData(long offset, ReadOnlySpan<byte> buffer)
@@ -387,15 +409,21 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
         Ensure.InRange(recordIndex, 0, RecordCount);
 
         byte[]? array = null;
-        long offset = HeaderLength + RecordLength * recordIndex;
-        Span<byte> buffer = RecordLength < 256
-            ? stackalloc byte[RecordLength]
-            : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
-        Schema.Write(values, buffer, this);
-        WriteRawRecord(recordIndex, buffer);
-        UpdateLastUpdated();
-        if (array is not null)
-            ArrayPool<byte>.Shared.Return(array);
+        try
+        {
+            Span<byte> buffer = RecordLength < MaxStackSizeAllowed
+                ? stackalloc byte[RecordLength]
+                : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
+
+            Schema.Write(values, buffer, this);
+            WriteRawRecord(recordIndex, buffer);
+            UpdateLastUpdated();
+        }
+        finally
+        {
+            if (array is not null)
+                ArrayPool<byte>.Shared.Return(array);
+        }
     }
 
     /// <summary>
@@ -441,22 +469,28 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     public DbfRecord Add()
     {
         byte[]? array = null;
-        Span<byte> buffer = RecordLength < 256
-            ? stackalloc byte[RecordLength]
-            : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
+        try
+        {
+            Span<byte> buffer = RecordLength < MaxStackSizeAllowed
+                ? stackalloc byte[RecordLength]
+                : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
 
-        buffer[0] = (byte)DbfRecordStatus.Valid;
-        buffer[1..].Fill((byte)' ');
+            buffer[0] = (byte)DbfRecordStatus.Valid;
+            buffer[1..].Fill((byte)' ');
 
-        _stream.Position = HeaderLength + RecordLength * RecordCount;
-        _stream.Write(buffer);
-        _stream.WriteByte(EofByte); // EOF.
-        UpdateLastUpdated();
-        var record = new DbfRecord(this, (int)RecordCount);
-        ++RecordCount;
-        if (array is not null)
-            ArrayPool<byte>.Shared.Return(array);
-        return record;
+            _stream.Position = HeaderLength + RecordLength * RecordCount;
+            _stream.Write(buffer);
+            _stream.WriteByte(EofByte); // EOF.
+            UpdateLastUpdated();
+            var record = new DbfRecord(this, (int)RecordCount);
+            ++RecordCount;
+            return record;
+        }
+        finally
+        {
+            if (array is not null)
+                ArrayPool<byte>.Shared.Return(array);
+        }
     }
 
     /// <summary>
@@ -466,67 +500,29 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     public DbfRecord Add(params object?[] values)
     {
         byte[]? array = null;
-        Span<byte> buffer = RecordLength < 256
-            ? stackalloc byte[RecordLength]
-            : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
+        try
+        {
+            Span<byte> buffer = RecordLength < MaxStackSizeAllowed
+                ? stackalloc byte[RecordLength]
+                : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
 
-        buffer[0] = (byte)DbfRecordStatus.Valid;
-        Schema.Write(values, buffer, this);
+            buffer[0] = (byte)DbfRecordStatus.Valid;
+            Schema.Write(values, buffer, this);
 
-        _stream.Position = HeaderLength + RecordLength * RecordCount;
-        _stream.Write(buffer);
-        _stream.WriteByte(EofByte); // EOF.
-        UpdateLastUpdated();
-        var record = new DbfRecord(this, (int)RecordCount);
-        ++RecordCount;
-        if (array is not null)
-            ArrayPool<byte>.Shared.Return(array);
-        return record;
+            _stream.Position = HeaderLength + RecordLength * RecordCount;
+            _stream.Write(buffer);
+            _stream.WriteByte(EofByte); // EOF.
+            UpdateLastUpdated();
+            var record = new DbfRecord(this, (int)RecordCount);
+            ++RecordCount;
+            return record;
+        }
+        finally
+        {
+            if (array is not null)
+                ArrayPool<byte>.Shared.Return(array);
+        }
     }
-
-    ///// <summary>
-    ///// Adds the specified records to the file.
-    ///// </summary>
-    ///// <param name="records">The records to add.</param>
-    ///// <exception cref="InvalidOperationException"></exception>
-    //public void AddRange(IEnumerable<object?[]> records)
-    //{
-    //    byte[]? array = null;
-    //    var count = 0;
-    //    try
-    //    {
-    //        Span<byte> buffer = RecordLength < 256
-    //            ? stackalloc byte[RecordLength]
-    //            : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
-    //        _stream.Position = HeaderLength + RecordLength * RecordCount;
-    //        foreach (var record in records)
-    //        {
-    //            Schema.Write(record, buffer, this);
-    //            _stream.Write(buffer);
-    //            ++count;
-    //        }
-    //        _stream.WriteByte(EofByte); // EOF.
-    //        UpdateLastUpdated();
-    //        RecordCount += count;
-    //    }
-    //    finally
-    //    {
-    //        if (array is not null)
-    //            ArrayPool<byte>.Shared.Return(array);
-    //    }
-    //}
-
-    ///// <summary>
-    ///// Removes all records from the file.
-    ///// </summary>
-    //public void Clear()
-    //{
-    //    _stream.SetLength(HeaderLength);
-    //    _stream.Position = HeaderLength;
-    //    _stream.WriteByte(EofByte); // EOF.
-    //    RecordCount = 0;
-    //    UpdateLastUpdated();
-    //}
 
     /// <summary>
     /// Returns an enumerator that iterates through the collection.
@@ -541,28 +537,6 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-    ///// <summary>
-    ///// Inserts a record at the specified index.
-    ///// </summary>
-    ///// <param name="index">The zero-based index at which <paramref name="record" /> should be inserted.</param>
-    ///// <param name="record">The record to insert.</param>
-    //public void Insert(int index, object?[] record)
-    //{
-    //    Ensure.InRange(index, 0, RecordCount);
-    //    Ensure.NotNull(record);
-
-    //    byte[]? array = null;
-    //    Span<byte> buffer = RecordLength < 256
-    //        ? stackalloc byte[RecordLength]
-    //        : (array = ArrayPool<byte>.Shared.Rent(RecordLength)).AsSpan(0, RecordLength);
-    //    var offset = HeaderLength + RecordLength * index;
-    //    _stream.InsertRange(offset, buffer);
-    //    UpdateLastUpdated();
-    //    ++RecordCount;
-    //    if (array is not null)
-    //        ArrayPool<byte>.Shared.Return(array);
-    //}
 
     /// <summary>
     /// Deletes the record at the specified index.
@@ -607,67 +581,5 @@ public sealed class Dbf : IDbfContext, IDisposable, IEnumerable<DbfRecord>
         for (int i = 0; i < count; ++i, _stream.Position += RecordLength)
             _stream.WriteByte((byte)status);
         UpdateLastUpdated();
-    }
-
-    ///// <summary>
-    ///// Removes the record at the specified index.
-    ///// </summary>
-    ///// <param name="index">The zero-based index of the record to remove.</param>
-    //public void RemoveAt(int index) => RemoveRange(index, 1);
-
-    ///// <summary>
-    ///// Removes a range of records from the file.
-    ///// </summary>
-    ///// <param name="index">The zero-based starting index of the range of records to remove.</param>
-    ///// <param name="count">The number of records to remove.</param>
-    //public void RemoveRange(long index, long count)
-    //{
-    //    Ensure.GreaterThanOrEqualTo(index, 0);
-    //    Ensure.LessThanOrEqualTo(index + count, RecordCount);
-
-    //    _stream.RemoveRange(HeaderLength + RecordLength * index, RecordLength * count);
-    //    UpdateLastUpdated();
-    //    RecordCount -= count;
-    //}
-
-    ///// <summary>
-    ///// Removes all deleted records.
-    ///// </summary>
-    ///// <returns>
-    ///// The actual number of records removed.
-    ///// </returns>
-    //public long RemoveDeleted()
-    //{
-    //    long removed = 0;
-    //    long index = -1, count = 0;
-    //    for (long i = RecordCount - 1; i >= 0; --i)
-    //    {
-    //        _stream.Position = HeaderLength + RecordLength * i;
-    //        // If deleted set index and increase count.
-    //        if ((DbfRecord.Status)_stream.ReadByte() == DbfRecord.Status.Deleted)
-    //        {
-    //            index = i;
-    //            ++count;
-    //        }
-    //        else if (index != -1) // Delete previous range?
-    //        {
-    //            RemoveRange(index, count);
-    //            removed += count;
-    //            index = -1;
-    //            count = 0;
-    //        }
-    //    }
-    //    return removed;
-    //}
-}
-
-file static class SpanExtensions
-{
-    public static bool Any<T>(this ReadOnlySpan<T> span, Func<T, bool> predicate)
-    {
-        for (int i = 0; i < span.Length; ++i)
-            if (predicate(span[i]))
-                return true;
-        return false;
     }
 }
