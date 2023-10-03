@@ -233,6 +233,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 };
 
             case DbfType.Memo when Length is 4:
+            case DbfType.Binary when Length is 4:
                 return (source, context) =>
                 {
                     if (context.MemoFile is null)
@@ -242,6 +243,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 };
 
             case DbfType.Memo:
+            case DbfType.Binary:
                 return (source, context) =>
                 {
                     source = source.Trim("\0 "u8);
@@ -255,7 +257,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 };
 
             case DbfType.Ole:
-            case DbfType.Binary:
                 return (source, context) => null;
 
             case DbfType.Numeric:
@@ -374,16 +375,18 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 };
 
             case DbfType.Memo when Length is 4:
+            case DbfType.Binary when Length is 4:
                 return (field, target, context) =>
                 {
                     if (context.MemoFile is not null && IsValidAndNotNull(field, target))
                     {
                         var index = context.MemoFile.Append((string)field);
-                        BinaryPrimitives.WriteInt32LittleEndian(target, (int)field);
+                        BinaryPrimitives.WriteInt32LittleEndian(target, index);
                     }
                 };
 
             case DbfType.Memo:
+            case DbfType.Binary:
                 return (field, target, context) =>
                 {
                     if (context.MemoFile is not null && IsValidAndNotNull(field, target))
@@ -397,7 +400,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                     }
                 };
 
-            case DbfType.Binary:
             case DbfType.Ole:
                 return (field, target, context) => _ = IsValidAndNotNull(field, target);
 
@@ -548,10 +550,10 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         {
             case DbfType.Character:
             case DbfType.Memo:
+            case DbfType.Binary:
                 result = s;
                 return true;
 
-            case DbfType.Binary:
             case DbfType.Ole:
                 return false;
 
