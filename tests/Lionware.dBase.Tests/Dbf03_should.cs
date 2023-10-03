@@ -1,11 +1,11 @@
 ﻿using System.Diagnostics;
 
 namespace Lionware.dBase;
-public sealed class Dbf03_should : IClassFixture<Dbf03Fixture>
+public sealed class Dbf03_should : IClassFixture<Dbf03_fixture>
 {
-    private readonly Dbf03Fixture _fixture;
+    private readonly Dbf03_fixture _fixture;
 
-    public Dbf03_should(Dbf03Fixture fixture) => _fixture = fixture;
+    public Dbf03_should(Dbf03_fixture fixture) => _fixture = fixture;
 
     [Fact]
     public void Return_3_for_Version()

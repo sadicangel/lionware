@@ -5,11 +5,11 @@ using System.Text;
 
 namespace Lionware.dBase;
 
-public sealed class DbfFieldDescriptor_should : IClassFixture<DbfFieldDescriptorFixture>
+public sealed class DbfFieldDescriptor_should : IClassFixture<DbfFieldDescriptor_fixture>
 {
-    private readonly DbfFieldDescriptorFixture _sharedFixture;
+    private readonly DbfFieldDescriptor_fixture _sharedFixture;
 
-    public DbfFieldDescriptor_should(DbfFieldDescriptorFixture fixture)
+    public DbfFieldDescriptor_should(DbfFieldDescriptor_fixture fixture)
     {
         _sharedFixture = fixture;
     }

@@ -2,14 +2,14 @@
 
 namespace Lionware.dBase;
 
-public sealed class DbfFieldDescriptorFixture : IDisposable
+public sealed class DbfFieldDescriptor_fixture : IDisposable
 {
     private readonly DbfMemoFile _memoFile;
 
-    public DbfFieldDescriptorFixture()
+    public DbfFieldDescriptor_fixture()
     {
         _memoFile = new DbfMemoFileV3(new MemoryStream(), writeHeader: true);
-        DbfContext = new DbfContextImpl(_memoFile);
+        DbfContext = new DbfContext(_memoFile);
     }
 
     internal IDbfContext DbfContext { get; }
@@ -31,9 +31,9 @@ public sealed class DbfFieldDescriptorFixture : IDisposable
 }
 
 
-file sealed record class DbfContextImpl : IDbfContext
+file sealed record class DbfContext : IDbfContext
 {
-    public DbfContextImpl(DbfMemoFile memoFile) => MemoFile = memoFile;
+    public DbfContext(DbfMemoFile memoFile) => MemoFile = memoFile;
 
     public Encoding Encoding { get => Encoding.ASCII; }
     public char DecimalSeparator { get => '.'; }
