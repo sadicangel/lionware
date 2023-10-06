@@ -571,7 +571,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     public object? ParseField(string s)
     {
         if (!TryParseField(s, out var field))
-            throw new FormatException();
+            throw new FormatException($"Value '{s}' could not be parsed into a valid value for field type {Type}");
         return field;
     }
 
