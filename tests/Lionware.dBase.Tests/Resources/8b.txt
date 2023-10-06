@@ -1,0 +1,6 @@
+CHARACTER        C          100        0         
+NUMERICAL        N          20         2         
+DATE             D          8          0         
+LOGICAL          L          1          0         
+FLOAT            F          20         18        
+MEMO             M          10         0         

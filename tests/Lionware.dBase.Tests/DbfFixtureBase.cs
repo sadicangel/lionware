@@ -1,5 +1,6 @@
 ﻿using CsvHelper;
 using CsvHelper.Configuration;
+using System.Diagnostics;
 using System.Globalization;
 
 namespace Lionware.dBase;
@@ -49,7 +50,10 @@ public abstract class DbfFixtureBase : IDisposable
 
                 var fieldCount = ReadOnlySchema.FieldCount;
                 if (reader.HeaderRecord is null)
+                {
                     reader.Read();
+                    reader.ReadHeader();
+                }
 
                 _readOnlyValues = new List<string[]>();
 
@@ -83,6 +87,7 @@ public abstract class DbfFixtureBase : IDisposable
                     var fields = new string[fieldCount];
                     for (int i = 0; i < fields.Length; ++i)
                     {
+                        Debug.WriteLine(ReadOnlySchema[i].Name);
                         var value = reader.GetField(i);
                         if (value is not null)
                             value = formatters[i].Invoke(value);
