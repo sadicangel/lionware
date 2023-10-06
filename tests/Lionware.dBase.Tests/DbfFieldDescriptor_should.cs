@@ -84,6 +84,12 @@ public sealed class DbfFieldDescriptor_should : IClassFixture<DbfFieldDescriptor
     [Fact]
     public void Read_Ole_value() => AssertRead(_sharedFixture.OleDescriptor);
 
+    [Fact]
+    public void Read_Currency_value() => AssertRead(_sharedFixture.CurrencyDescriptor);
+
+    [Fact]
+    public void Read_NullFlags_value() => AssertRead(_sharedFixture.NullFlagsDescriptor);
+
     private void AssertWrite(in DbfFieldDescriptor descriptor)
     {
         var value = descriptor.CreateRandomValue();
@@ -142,6 +148,12 @@ public sealed class DbfFieldDescriptor_should : IClassFixture<DbfFieldDescriptor
     [Fact]
     public void Write_Ole_value() => AssertWrite(_sharedFixture.OleDescriptor);
 
+    [Fact]
+    public void Write_Currency_value() => AssertWrite(_sharedFixture.CurrencyDescriptor);
+
+    [Fact]
+    public void Write_NullFlags_value() => AssertWrite(_sharedFixture.NullFlagsDescriptor);
+
 }
 
 file static class TestExtensions
@@ -150,9 +162,18 @@ file static class TestExtensions
 
     public static T CreateRandomValue<T>() => AutoFixture.Create<T>();
 
+    private static string CreateRandomString(int length)
+    {
+        var builder = new StringBuilder(AutoFixture.Create<string>());
+        while (builder.Length < length)
+            builder.Append(AutoFixture.Create<string>());
+        builder.Length = length;
+        return builder.ToString();
+    }
+
     public static object? CreateRandomValue(this DbfFieldDescriptor descriptor) => descriptor.Type switch
     {
-        DbfType.Character => AutoFixture.Create<string>(),
+        DbfType.Character => CreateRandomString(descriptor.Length),
         DbfType.Numeric => AutoFixture.Create<double>(),
         DbfType.Float => AutoFixture.Create<double>(),
         DbfType.Int32 => AutoFixture.Create<int>(),
@@ -164,6 +185,8 @@ file static class TestExtensions
         DbfType.Memo => null,
         DbfType.Binary => null,
         DbfType.Ole => null,
+        DbfType.Currency => AutoFixture.Create<decimal>(),
+        DbfType.NullFlags => CreateRandomString(descriptor.Length),
         _ => throw new InvalidOperationException($"Unexpected type {descriptor.Type}")
     };
 
@@ -181,6 +204,8 @@ file static class TestExtensions
         DbfType.Memo => value is string str ? Encoding.ASCII.GetBytes(str) : GetEmptyArray(descriptor.Length),
         DbfType.Binary => value is string str ? Encoding.ASCII.GetBytes(str) : GetEmptyArray(descriptor.Length),
         DbfType.Ole => value is string str ? Encoding.ASCII.GetBytes(str) : GetEmptyArray(descriptor.Length),
+        DbfType.Currency => BitConverter.GetBytes((double)(decimal)value!),
+        DbfType.NullFlags => value is string str ? Encoding.ASCII.GetBytes(str) : GetEmptyArray(descriptor.Length),
         _ => throw new InvalidOperationException($"Unexpected type {descriptor.Type}")
     };
 

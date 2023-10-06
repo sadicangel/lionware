@@ -26,6 +26,8 @@ public sealed class DbfFieldDescriptor_fixture : IDisposable
     public DbfFieldDescriptor MemoDescriptor { get; } = DbfFieldDescriptor.Memo("memo", 50);
     public DbfFieldDescriptor BinaryDescriptor { get; } = DbfFieldDescriptor.Binary("binary", 50);
     public DbfFieldDescriptor OleDescriptor { get; } = DbfFieldDescriptor.Ole("ole", 50);
+    public DbfFieldDescriptor CurrencyDescriptor { get; } = DbfFieldDescriptor.Currency("currency", 50);
+    public DbfFieldDescriptor NullFlagsDescriptor { get; } = DbfFieldDescriptor.NullFlags("null_flags", 1);
 
     public void Dispose() => _memoFile.Dispose();
 }

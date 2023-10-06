@@ -274,6 +274,9 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
             case DbfType.Double:
                 return (source, context) => BinaryPrimitives.ReadDoubleLittleEndian(source);
 
+            case DbfType.Currency:
+                return (source, context) => (decimal)BinaryPrimitives.ReadDoubleLittleEndian(source);
+
             case DbfType.Date:
                 return (source, context) =>
                 {
@@ -303,6 +306,10 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                         _ => null,
                     };
                 };
+
+
+            case DbfType.NullFlags:
+                return (source, context) => context.Encoding.GetString(source);
 
             default:
                 throw new InvalidEnumArgumentException(nameof(Type), (int)Type, typeof(DbfType));
@@ -426,6 +433,13 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                         BinaryPrimitives.WriteDoubleLittleEndian(target, (double)field);
                 };
 
+            case DbfType.Currency:
+                return (field, target, context) =>
+                {
+                    if (IsValidAndNotNull(field, target))
+                        BinaryPrimitives.WriteDoubleLittleEndian(target, (double)(decimal)field);
+                };
+
             case DbfType.Date:
                 return (field, target, context) =>
                 {
@@ -454,6 +468,17 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
 
             case DbfType.Logical:
                 return (field, target, context) => target[0] = IsValidAndNotNull(field, target) ? (byte)((bool)field ? 'T' : 'F') : (byte)'?';
+
+            case DbfType.NullFlags:
+                return (field, target, context) =>
+                {
+                    if (IsValidAndNotNull(field, target))
+                    {
+                        ReadOnlySpan<char> @string = (string)field;
+                        @string = @string[..Math.Min(@string.Length, length)];
+                        context.Encoding.GetBytes(@string, target);
+                    }
+                };
 
             default:
                 throw new InvalidEnumArgumentException(nameof(Type), (int)Type, typeof(DbfType));
@@ -578,6 +603,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
 
             case DbfType.Logical:
                 result = s is "T" or "t" or "Y" or "y";
+                return true;
+
+            case DbfType.Currency when decimal.TryParse(s, out var d128):
+                result = d128;
+                return true;
+
+            case DbfType.NullFlags:
+                result = s;
                 return true;
 
             default:
@@ -782,6 +815,28 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     }
 
     /// <summary>
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Currency" />.
+    /// </summary>
+    /// <param name="name">The name of the field.</param>
+    /// <param name="length">The length of the field in bytes.</param>
+    /// <returns>
+    /// A new instance of <see cref="DbfFieldDescriptor" />
+    /// </returns>
+    public static DbfFieldDescriptor Currency(string name, byte length = 8)
+    {
+        Span<byte> nameSpan = stackalloc byte[20];
+        nameSpan.Clear();
+        Encoding.ASCII.GetBytes(name, nameSpan);
+        return new()
+        {
+            Name = nameSpan,
+            Type = DbfType.Currency,
+            Length = length,
+            Decimal = 0
+        };
+    }
+
+    /// <summary>
     /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.Memo" />.
     /// </summary>
     /// <param name="name">The name of the field.</param>
@@ -844,6 +899,28 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
             Type = DbfType.Ole,
             Length = length,
             Decimal = 0,
+        };
+    }
+
+    /// <summary>
+    /// Creates a new <see cref="DbfFieldDescriptor" /> of type <see cref="DbfType.NullFlags" />.
+    /// </summary>
+    /// <param name="name">The name of the field.</param>
+    /// <param name="length">The length of the field in bytes.</param>
+    /// <returns>
+    /// A new instance of <see cref="DbfFieldDescriptor" />
+    /// </returns>
+    public static DbfFieldDescriptor NullFlags(string name, byte length)
+    {
+        Span<byte> nameSpan = stackalloc byte[20];
+        nameSpan.Clear();
+        Encoding.ASCII.GetBytes(name, nameSpan);
+        return new()
+        {
+            Name = nameSpan,
+            Type = DbfType.NullFlags,
+            Length = length,
+            Decimal = 0
         };
     }
 

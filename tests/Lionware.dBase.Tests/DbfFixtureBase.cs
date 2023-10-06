@@ -65,10 +65,12 @@ public abstract class DbfFixtureBase : IDisposable
                         DbfType.Date or
                         DbfType.Timestamp => str => str ?? String.Empty,
                         DbfType.Logical => str => str ?? String.Empty,
+                        DbfType.Currency => str => String.IsNullOrEmpty(str) ? String.Empty : Convert.ToDecimal(str).ToString($"F{@decimal}"),
                         DbfType.Memo or
                         DbfType.Binary or
                         DbfType.Ole => str => String.IsNullOrEmpty(str) ? String.Empty : OperatingSystem.IsWindows() ? str : str.Replace(Environment.NewLine, "\r\n"),
-                        _ => throw new NotImplementedException(),
+                        (DbfType)48 => str => String.Empty,
+                        _ => throw new NotImplementedException($"{descriptor.Type}"),
                     };
                 }
 
