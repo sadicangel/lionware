@@ -23,6 +23,12 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     private const int MaxNameLength = 11;
     private const int JulianOffsetToDateTime = 1721426;
     private static readonly DateTime DateTimeStart = new(1, 1, 1);
+    private static readonly string[] DateFormats = new string[]
+    {
+        "dd/MM/yyyy HH:mm:ss",
+        "dd/MM/yyyyTHH:mm:ss",
+        "yyyy-MM-ddTHH:mm:ss.fffffffK",
+    };
 
     [FieldOffset(0)]
     private readonly byte _name;
@@ -614,7 +620,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 result = date;
                 return true;
 
-            case DbfType.Timestamp when DateTime.TryParse(s, CultureInfo.InvariantCulture, out var timestamp):
+            case DbfType.Timestamp when DateTime.TryParseExact(s, DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var timestamp):
                 result = timestamp;
                 return true;
 
