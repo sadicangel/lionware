@@ -571,7 +571,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     public object? ParseField(string s)
     {
         if (!TryParseField(s, out var field))
-            throw new FormatException($"Value '{s}' could not be parsed into a valid value for field type {Type}");
+            throw new FormatException($"Value '{s}' could not be parsed into a valid '{Type}' value");
         return field;
     }
 
@@ -599,14 +599,14 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
             case DbfType.Ole:
                 return false;
 
-            case DbfType.Numeric when double.TryParse(s, out var f64):
-            case DbfType.Float when double.TryParse(s, out f64):
-            case DbfType.Double when double.TryParse(s, out f64):
+            case DbfType.Numeric when double.TryParse(s, CultureInfo.InvariantCulture, out var f64):
+            case DbfType.Float when double.TryParse(s, CultureInfo.InvariantCulture, out f64):
+            case DbfType.Double when double.TryParse(s, CultureInfo.InvariantCulture, out f64):
                 result = f64;
                 return true;
 
-            case DbfType.Int32 when int.TryParse(s, out var i32):
-            case DbfType.AutoIncrement when int.TryParse(s, out i32):
+            case DbfType.Int32 when int.TryParse(s, CultureInfo.InvariantCulture, out var i32):
+            case DbfType.AutoIncrement when int.TryParse(s, CultureInfo.InvariantCulture, out i32):
                 result = i32;
                 return true;
 
@@ -614,7 +614,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 result = date;
                 return true;
 
-            case DbfType.Timestamp when DateTime.TryParse(s, out var timestamp):
+            case DbfType.Timestamp when DateTime.TryParse(s, CultureInfo.InvariantCulture, out var timestamp):
                 result = timestamp;
                 return true;
 
@@ -622,7 +622,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 result = s is "T" or "t" or "Y" or "y";
                 return true;
 
-            case DbfType.Currency when decimal.TryParse(s, out var d128):
+            case DbfType.Currency when decimal.TryParse(s, CultureInfo.InvariantCulture, out var d128):
                 result = d128;
                 return true;
 
