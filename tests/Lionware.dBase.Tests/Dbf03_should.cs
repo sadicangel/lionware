@@ -86,7 +86,7 @@ public sealed class Dbf03_should : IClassFixture<Dbf03_fixture>
             for (int j = 0; j < record.Count; j++)
             {
                 var expected = values[j];
-                Debug.Write($"{_fixture.ReadOnlySchema[j].NameString}: {expected}");
+                Debug.Write($"{_fixture.ReadOnlySchema[j].Name}: {expected}");
                 var actual = record[j]?.ToString();
                 Assert.Equal(expected, actual);
             }

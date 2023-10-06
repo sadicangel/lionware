@@ -25,12 +25,16 @@ public abstract class DbfFixtureBase : IDisposable
             static DbfFieldDescriptor ReadFieldDescriptor(string line)
             {
                 var contents = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                return new DbfFieldDescriptor(
-                    name: contents[0],
-                    type: (DbfType)(byte)Char.Parse(contents[1]),
-                    length: Byte.Parse(contents[2]),
-                    @decimal: Byte.Parse(contents[3])
-                );
+
+                var name = contents[0];
+                var type = (DbfType)(byte)Char.Parse(contents[1]);
+                var isLengthU16 = !Byte.TryParse(contents[2], out var length);
+                var lengthU16 = UInt16.Parse(contents[2]);
+                var @decimal = Byte.Parse(contents[3]);
+
+                return type is DbfType.Character
+                    ? DbfFieldDescriptor.Character(name, lengthU16)
+                    : new DbfFieldDescriptor(name, type, length, @decimal);
             }
         }
     }
@@ -69,8 +73,8 @@ public abstract class DbfFixtureBase : IDisposable
                         DbfType.Memo or
                         DbfType.Binary or
                         DbfType.Ole => str => String.IsNullOrEmpty(str) ? String.Empty : OperatingSystem.IsWindows() ? str : str.Replace(Environment.NewLine, "\r\n"),
-                        (DbfType)48 => str => String.Empty,
-                        _ => throw new NotImplementedException($"{descriptor.Type}"),
+                        DbfType.NullFlags => str => str ?? String.Empty,
+                        _ => str => String.Empty,
                     };
                 }
 

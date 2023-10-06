@@ -1,28 +1,29 @@
 ﻿using System.Diagnostics;
 
 namespace Lionware.dBase;
-public sealed class Dbf83_should : IClassFixture<Dbf83_fixture>
-{
-    private readonly Dbf83_fixture _fixture;
 
-    public Dbf83_should(Dbf83_fixture fixture) => _fixture = fixture;
+public sealed class Dbf31_custom_length_should : IClassFixture<Dbf31_custom_length_fixture>
+{
+    private readonly Dbf31_custom_length_fixture _fixture;
+
+    public Dbf31_custom_length_should(Dbf31_custom_length_fixture fixture) => _fixture = fixture;
 
     [Fact]
-    public void Return_0x83_for_Version()
+    public void Return_0x31_for_Version()
     {
-        Assert.Equal(0x83, _fixture.ReadOnlyDbf.Version);
+        Assert.Equal(0x31, _fixture.ReadOnlyDbf.Version);
     }
 
     [Fact]
-    public void Return_false_for_IsFoxPro()
+    public void Return_true_for_IsFoxPro()
     {
-        Assert.False(_fixture.ReadOnlyDbf.IsFoxPro);
+        Assert.True(_fixture.ReadOnlyDbf.IsFoxPro);
     }
 
     //[Fact]
-    //public void Return_true_for_HasDbtMemo()
+    //public void Return_false_for_HasDbtMemo()
     //{
-    //    Assert.True(_fixture.ReadOnlyDbf.HasDbtMemo);
+    //    Assert.False(_fixture.ReadOnlyDbf.HasDbtMemo);
     //}
 
     //[Fact]
@@ -32,15 +33,15 @@ public sealed class Dbf83_should : IClassFixture<Dbf83_fixture>
     //}
 
     [Fact]
-    public void Return_67_for_RecordCount()
+    public void Return_9_for_RecordCount()
     {
-        Assert.Equal(67, _fixture.ReadOnlyDbf.RecordCount);
+        Assert.Equal(9, _fixture.ReadOnlyDbf.RecordCount);
     }
 
     [Fact]
-    public void Return_15_for_FieldCount()
+    public void Return_10_for_FieldCount()
     {
-        Assert.Equal(15, _fixture.ReadOnlyDbf.Schema.FieldCount);
+        Assert.Equal(10, _fixture.ReadOnlyDbf.Schema.FieldCount);
     }
 
     [Fact]
@@ -61,7 +62,6 @@ public sealed class Dbf83_should : IClassFixture<Dbf83_fixture>
                 var actual = record[j]?.ToString();
                 var expected = values[j];
 
-                Debug.WriteLine($"{_fixture.ReadOnlySchema[j].Name}: {expected}");
                 Assert.Equal(expected, actual);
             }
         }
@@ -70,7 +70,7 @@ public sealed class Dbf83_should : IClassFixture<Dbf83_fixture>
     [Fact]
     public void Write_values_correctly() => this.WithTempDirectory(dir =>
     {
-        var fileName = Path.Combine(dir, "83.dbf");
+        var fileName = Path.Combine(dir, "03.dbf");
         using var dbf = new Dbf(fileName, _fixture.ReadOnlySchema);
         foreach (var csvRecord in _fixture.ReadOnlyValues)
         {
@@ -87,7 +87,7 @@ public sealed class Dbf83_should : IClassFixture<Dbf83_fixture>
             for (int j = 0; j < record.Count; j++)
             {
                 var expected = values[j];
-                Debug.WriteLine($"{_fixture.ReadOnlySchema[j].Name}: {expected}");
+                Debug.Write($"{_fixture.ReadOnlySchema[j].Name}: {expected}");
                 var actual = record[j]?.ToString();
                 Assert.Equal(expected, actual);
             }

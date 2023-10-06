@@ -38,7 +38,7 @@ public sealed class DbfSchema : IEquatable<DbfSchema>
             _writers[i] = descriptor.CreateWriter();
             _offsets[i] = recordLength;
             _lengths[i] = descriptor.Length;
-            _indices[descriptor.NameString] = i;
+            _indices[descriptor.Name] = i;
             recordLength += descriptor.Length;
         }
         RecordLength = recordLength;

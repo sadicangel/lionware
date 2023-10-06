@@ -31,6 +31,8 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     [FieldOffset(12)]
     private readonly uint _address;
     [FieldOffset(16)]
+    private readonly ushort _lengthU16;
+    [FieldOffset(16)]
     private readonly byte _length;
     [FieldOffset(17)]
     private readonly byte _decimal;
@@ -51,18 +53,38 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <param name="type">The type of the field.</param>
     /// <param name="length">The length of the field in bytes.</param>
     /// <param name="decimal">The number of characters allowed after the decimal separator.</param>
-    public DbfFieldDescriptor(string name, DbfType type, byte length, byte @decimal)
+    public DbfFieldDescriptor(ReadOnlySpan<char> name, DbfType type, byte length, byte @decimal)
     {
-        NameString = name;
-        Type = type;
-        Length = length;
-        Decimal = @decimal;
+        var chars = name[..Math.Min(name.Length, MaxNameLength)];
+        var bytes = MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _name), MaxNameLength);
+        bytes.Clear();
+        Encoding.ASCII.GetBytes(chars, bytes);
+        _type = type;
+        _length = length;
+        _decimal = @decimal;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DbfFieldDescriptor"/> struct.
+    /// </summary>
+    /// <param name="name">The name of the field.</param>
+    /// <param name="type">The type of the field.</param>
+    /// <param name="length">The length of the field in bytes.</param>
+    /// <param name="decimal">The number of characters allowed after the decimal separator.</param>
+    public DbfFieldDescriptor(ReadOnlySpan<byte> name, DbfType type, byte length, byte @decimal)
+    {
+        var bytes = MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _name), MaxNameLength);
+        bytes.Clear();
+        name[..Math.Min(name.Length, MaxNameLength)].CopyTo(bytes);
+        _type = type;
+        _length = length;
+        _decimal = @decimal;
     }
 
     /// <summary>
     /// Gets the field name in ASCII.
     /// </summary>
-    public readonly ReadOnlySpan<byte> Name
+    public readonly ReadOnlySpan<byte> NameAscii
     {
         get
         {
@@ -70,12 +92,6 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
             {
                 return MemoryMarshal.CreateReadOnlySpanFromNullTerminated((byte*)Unsafe.AsPointer(ref Unsafe.AsRef(in _name)));
             }
-        }
-        init
-        {
-            var name = MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _name), MaxNameLength);
-            name.Clear();
-            value[..Math.Min(MaxNameLength, value.Length)].CopyTo(name);
         }
     }
 
@@ -85,22 +101,22 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <remarks>
     /// Only ASCII characters are supported.
     /// </remarks>
-    public readonly string NameString { get => Encoding.ASCII.GetString(Name); init => Name = Encoding.ASCII.GetBytes(value); }
+    public readonly string Name { get => Encoding.ASCII.GetString(NameAscii); }
 
     /// <summary>
     /// Gets the type of the field.
     /// </summary>
-    public readonly DbfType Type { get => _type; init => _type = value; }
+    public readonly DbfType Type { get => _type; }
 
     /// <summary>
-    /// Gets or sets the length of the field in binary (maximum 254).
+    /// Gets or sets the length of the field in bytes.
     /// </summary>
-    public readonly byte Length { get => _length; init => _length = value; }
+    public readonly ushort Length { get => Type is DbfType.Character ? _lengthU16 : _length; }
 
     /// <summary>
     /// Gets the field decimal count in binary.
     /// </summary>
-    public readonly byte Decimal { get => _decimal; init => _decimal = value; }
+    public readonly byte Decimal { get => Type is DbfType.Character ? (byte)0 : _decimal; }
 
     /// <summary>
     /// Indicates whether the current object is equal to another object of the same type.
@@ -216,7 +232,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         }
     }
 
-    private string GetDebuggerDisplay() => $"{NameString}, {(char)_type}, {_length}, {_decimal}";
+    private string GetDebuggerDisplay() => $"{Name}, {(char)_type}, {_length}, {_decimal}";
 
     internal DbfFieldReader CreateReader()
     {
@@ -312,7 +328,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                 return (source, context) => context.Encoding.GetString(source);
 
             default:
-                throw new InvalidEnumArgumentException(nameof(Type), (int)Type, typeof(DbfType));
+                return (source, context) => null;
         }
 
         static bool TryParseInt32(ReadOnlySpan<byte> source, Encoding encoding, out int i32)
@@ -480,8 +496,9 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
                     }
                 };
 
+
             default:
-                throw new InvalidEnumArgumentException(nameof(Type), (int)Type, typeof(DbfType));
+                return (field, target, context) => _ = IsValidAndNotNull(field, target);
         }
 
         static void FormatF64(double value, Span<byte> target, IDbfContext context, int decimalSpaces)
@@ -627,18 +644,13 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
     /// <returns>
     /// A new instance of <see cref="DbfFieldDescriptor" />
     /// </returns>
-    public static DbfFieldDescriptor Character(string name, byte length = 10)
+    public static DbfFieldDescriptor Character(string name, ushort length = 10)
     {
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Character,
-            Length = length,
-            Decimal = 0,
-        };
+        var bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref length, 1));
+        return new(nameSpan, DbfType.Character, length: bytes[0], @decimal: bytes[1]);
     }
 
     /// <summary>
@@ -653,13 +665,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Date,
-            Length = 8,
-            Decimal = 0
-        };
+        return new(nameSpan, DbfType.Date, 8, 0);
     }
 
     /// <summary>
@@ -677,13 +683,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Float,
-            Length = length,
-            Decimal = @decimal,
-        };
+        return new(nameSpan, DbfType.Float, length, @decimal);
     }
 
     /// <summary>
@@ -700,13 +700,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Numeric,
-            Length = length,
-            Decimal = @decimal,
-        };
+        return new(nameSpan, DbfType.Numeric, length, @decimal);
     }
 
     /// <summary>
@@ -721,13 +715,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Logical,
-            Length = 1,
-            Decimal = 0
-        };
+        return new(nameSpan, DbfType.Logical, 1, 0);
     }
 
     /// <summary>
@@ -742,13 +730,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Timestamp,
-            Length = 8,
-            Decimal = 0
-        };
+        return new(nameSpan, DbfType.Timestamp, 8, 0);
     }
 
     /// <summary>
@@ -763,13 +745,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Int32,
-            Length = 4,
-            Decimal = 0
-        };
+        return new(nameSpan, DbfType.Int32, 4, 0);
     }
 
     /// <summary>
@@ -784,13 +760,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.AutoIncrement,
-            Length = 4,
-            Decimal = 0
-        };
+        return new(nameSpan, DbfType.AutoIncrement, 4, 0);
     }
 
     /// <summary>
@@ -805,13 +775,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Double,
-            Length = 8,
-            Decimal = 0
-        };
+        return new(nameSpan, DbfType.Double, 8, 0);
     }
 
     /// <summary>
@@ -827,13 +791,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Currency,
-            Length = length,
-            Decimal = 0
-        };
+        return new(nameSpan, DbfType.Currency, length, 0);
     }
 
     /// <summary>
@@ -849,13 +807,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Memo,
-            Length = length,
-            Decimal = 0,
-        };
+        return new(nameSpan, DbfType.Memo, length, 0);
     }
 
     /// <summary>
@@ -871,13 +823,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Binary,
-            Length = length,
-            Decimal = 0,
-        };
+        return new(nameSpan, DbfType.Binary, length, 0);
     }
 
     /// <summary>
@@ -893,13 +839,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.Ole,
-            Length = length,
-            Decimal = 0,
-        };
+        return new(nameSpan, DbfType.Ole, length, 0);
     }
 
     /// <summary>
@@ -915,13 +855,7 @@ public readonly struct DbfFieldDescriptor : IEquatable<DbfFieldDescriptor>
         Span<byte> nameSpan = stackalloc byte[20];
         nameSpan.Clear();
         Encoding.ASCII.GetBytes(name, nameSpan);
-        return new()
-        {
-            Name = nameSpan,
-            Type = DbfType.NullFlags,
-            Length = length,
-            Decimal = 0
-        };
+        return new(nameSpan, DbfType.NullFlags, length, 0);
     }
 
     /// <summary>
